@@ -1,48 +1,93 @@
-// src/models/Product.js
-import mongoose from "mongoose";
+const mongoose = require("mongoose");
 
-const ProductSchema = new mongoose.Schema({
-  name: { 
-    type: String, 
-    required: [true, "Please provide a product name."] 
-  },
-  description: { 
-    type: String 
-  },
-  price: { 
-    type: Number, 
-    required: [true, "Please provide a product price."] 
-  },
-  imageUrl: { 
-    type: String 
-  },
-  category: { 
+const productSchema = new mongoose.Schema({
+  name: {
     type: String,
-    // Example categories: "necklace", "ring", "bracelet", "earring"
+    required: true,
+    trim: true,
   },
-  material: { 
+  slug: {
     type: String,
-    // Example materials: "Sterling Silver", "Gold-Plated", "Leather"
+    unique: true,
+    lowercase: true,
   },
-  stock: { 
-    type: Number, 
-    default: 0 
+  description: {
+    type: String,
+    required: true,
+    maxlength: 2000,
   },
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
+  price: {
+    type: Number,
+    required: true,
   },
-  updatedAt: { 
-    type: Date, 
-    default: Date.now 
-  }
+  encryptedCost: {
+    type: String,
+    required: true,
+  },
+  discount: {
+    type: Number,
+    default: 0,
+  },
+  SKU: {
+    type: String,
+    unique: true,
+    required: true,
+  },
+  material: {
+    type: String,
+    enum: ["Gold", "Silver", "Alloy", "Brass", "Platinum", "Stainless Steel"],
+    required: true,
+  },
+  gender: {
+    type: String,
+    enum: ["Men", "Women", "Unisex"],
+    required: true,
+  },
+  category: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Category",
+    required: true,
+  },
+  images: [
+    {
+      public_id: String,
+      url: String,
+      blurDataURL: String,
+      position: Number,
+    },
+  ],
+  availableQty: {
+    type: Number,
+    default: 0,
+  },
+  soldQty: {
+    type: Number,
+    default: 0,
+  },
+  tags: [String],
+  isFeatured: {
+    type: Boolean,
+    default: false,
+  },
+  averageRating: {
+    type: Number,
+    default: 0,
+  },
+  options: [
+    {
+      name: { type: String, required: true }, // e.g., "Silver Chain"
+      price: { type: Number, required: true }, // e.g., 1599
+      description: { type: String }, // optional
+    },
+  ],
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
 });
 
-// Middleware to update the "updatedAt" field before each save
-ProductSchema.pre("save", function (next) {
-  this.updatedAt = Date.now();
-  next();
-});
 
-// Prevent model overwrite upon initial compile in development
-export default mongoose.models.Product || mongoose.model("Product", ProductSchema);
+// Prevent model recompilation
+const Product =
+  mongoose.models.Product || mongoose.model("Product", productSchema);
+module.exports = Product;

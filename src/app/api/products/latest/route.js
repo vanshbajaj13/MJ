@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/dbConnect";
 import Product from "@/models/Product";
 
-let cachedProducts = null;
+let cachedLatestProducts = null;
 let lastFetched = 0;
 const TTL = 1000 * 60 * 5; // 5 minutes
+const LIMIT = 7; // Change to 5 if you want latest 5
 
 export async function GET() {
-  if (cachedProducts && Date.now() - lastFetched < TTL) {
+  if (cachedLatestProducts && Date.now() - lastFetched < TTL) {
     return NextResponse.json(
-      { success: true, data: cachedProducts },
+      { success: true, data: cachedLatestProducts },
       { status: 200 }
     );
   }
@@ -17,9 +18,11 @@ export async function GET() {
   await dbConnect();
 
   try {
-    const products = await Product.find().sort({ createdAt: -1 });
+    const products = await Product.find()
+      .sort({ createdAt: -1 })
+      .limit(LIMIT);
 
-    cachedProducts = products;
+    cachedLatestProducts = products;
     lastFetched = Date.now();
 
     return NextResponse.json(
@@ -27,9 +30,9 @@ export async function GET() {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching products:", error);
+    console.error("Error fetching latest products:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to retrieve products." },
+      { success: false, error: "Failed to retrieve latest products." },
       { status: 500 }
     );
   }
