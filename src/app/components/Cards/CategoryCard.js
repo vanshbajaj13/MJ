@@ -18,6 +18,7 @@ const CategoryCard = ({ category, loading }) => {
       <div className="rounded-lg shadow-md hover:shadow-xl transition duration-300 bg-white border overflow-hidden">
         <div className="relative w-full h-48">
           <Image
+            loading="lazy"
             src={category.image.url}
             alt={category.name}
             fill

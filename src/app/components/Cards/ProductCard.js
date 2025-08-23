@@ -17,6 +17,7 @@ export default function ProductCard({ product, loading }) {
           <div className="skeleton-shimmer border-2 border-dashed w-full h-full " />
         ) : (
           <Image
+            loading="lazy"
             src={primaryImage?.url}
             alt={product?.name || "Product Image"}
             fill

@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "dotenv": "^16.4.7",
+    "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.1.0",
     "mongoose": "^8.9.7",
     "next": "15.1.6",
+    "next-seo": "^6.8.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "swiper": "^11.2.8",

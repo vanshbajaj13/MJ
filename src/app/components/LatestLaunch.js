@@ -57,7 +57,7 @@ export default function LatestLaunch() {
       )}
 
       {/* Grid of Products or Skeletons */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-1 gap-y-6 md:gap-6 sm:gap-4">
+      <div className="px-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-1 gap-y-6 md:gap-6 sm:gap-4">
         {isLoading
           ? Array.from({ length: 5 }).map((_, index) => (
               <ProductCard key={`skeleton-${index}`} loading />
