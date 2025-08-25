@@ -1,24 +1,7 @@
-import Image from "next/image";
-import Link from "next/link";
 import ProductGallery from "../../components/ProductGallery";
+import AccordionSection from "./AccordionSection";
 
-export async function generateMetadata({ params }) {
-  const { slug } = await params;
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL}/api/products/${slug}`
-  );
-
-  if (!res.ok) return { title: "Product Not Found" };
-
-  const { data: product } = await res.json();
-  return {
-    title: product.name,
-    description: product.description?.slice(0, 160),
-  };
-}
-
-export default async function ProductPage({ params }) {
-  const { slug } = await params;
+async function fetchProduct(slug) {
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_BASE_URL}/api/products/${slug}`,
     {
@@ -26,13 +9,29 @@ export default async function ProductPage({ params }) {
     }
   );
 
-  if (!res.ok) {
+  if (!res.ok) return null;
+  const { data } = await res.json();
+  return data;
+}
+
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const product = await fetchProduct(slug);
+  return {
+    title: product?.name || "Product Not Found",
+    description: product?.description?.slice(0, 160) || "",
+  };
+}
+
+export default async function ProductPage({ params }) {
+  const { slug } = await params;
+  const product = await fetchProduct(slug);
+  if (!product) {
     return (
       <div className="text-center py-20 text-red-500">Product not found.</div>
     );
   }
 
-  const { data: product } = await res.json();
   const primaryImage =
     product.images?.find((img) => img.position === 0) || product.images?.[0];
 
@@ -45,26 +44,46 @@ export default async function ProductPage({ params }) {
 
   return (
     <div className="bg-white min-h-screen">
-      {/* Brand Header */}
-      <div className="max-w-7xl mx-auto px-0 md:px-4 pb-6 lg:py-6">
-        <div className="flex flex-col md:flex-row-reverse gap-10">
+      <div className="max-w-7xl mx-auto px-0 lg:px-8 pb-12 lg:pt-4">
+        <div className="flex flex-col lg:flex-row gap-8 lg:gap-16">
           {/* Image Section */}
-          <div className="lg:w-1/2 lg:sticky lg:top-20 md:self-start overflow-hidden">
+          <div className="lg:w-1/2 overflow-hidden">
             <ProductGallery images={product.images} />
           </div>
 
           {/* Details Section */}
-          <div className="md:w-1/2 px-4">
-            <div className="space-y-6">
-              <div className="border-b pb-6">
-                <h2 className="text-gray-500 font-medium">{collection}</h2>
-                <h1 className="text-3xl font-bold text-gray-900 mt-1">
+          <div className="lg:w-1/2 sticky w-[90%] top-24 self-start m-auto lg:m-0">
+            <div className="space-y-6 ">
+              <div>
+                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                  {collection}
+                </h2>
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mt-1">
                   {product.name}
                 </h1>
-                <p className="text-gray-500 mt-2">Material: {material}</p>
+
+                {/* Rating */}
+                <div className="flex items-center mt-2">
+                  <div className="flex text-amber-400">
+                    {/* ★★★☆☆ - 3 star rating as shown in example */}
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <svg
+                        key={star}
+                        className={`h-5 w-5 ${
+                          star <= 3 ? "fill-current" : "text-gray-300"
+                        }`}
+                        viewBox="0 0 20 20"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                    ))}
+                  </div>
+                  <span className="ml-2 text-sm text-gray-500">review</span>
+                </div>
               </div>
 
-              <div className="border-b pb-6">
+              <div className="border-t border-b border-gray-200 py-4">
                 <div className="text-2xl font-bold text-gray-900">
                   ₹{product.price?.toFixed(2)}
                   {product.discount > 0 && (
@@ -81,71 +100,53 @@ export default async function ProductPage({ params }) {
                 </p>
               </div>
 
-              <div className="border-b pb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                  Quantity
-                </h3>
-                <div className="flex items-center">
-                  <button className="border border-gray-300 w-10 h-10 flex items-center justify-center rounded-l-md">
-                    -
+              {/* Size Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-gray-900">Size:</h3>
+                  <button className="text-xs text-gray-500 underline">
+                    Size chart
                   </button>
-                  <div className="border-y border-gray-300 w-12 h-10 flex items-center justify-center font-medium">
-                    1
-                  </div>
-                  <button className="border border-gray-300 w-10 h-10 flex items-center justify-center rounded-r-md">
-                    +
-                  </button>
+                </div>
+                <div className="flex space-x-3">
+                  {product.sizes.map((s) => (
+                    <button
+                      key={s.size._id}
+                      className="border border-gray-300 px-4 py-2 text-sm font-medium rounded-md hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
+                    >
+                      {s.size.name}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button className="bg-black text-white px-6 py-4 rounded-md hover:bg-gray-800 transition flex-1 font-medium">
-                  Add to Cart
-                </button>
-                <button className="border-2 border-black text-black px-6 py-4 rounded-md hover:bg-gray-50 transition flex-1 font-medium">
-                  Buy it now
+              {/* Add to Cart Button */}
+              <button className="w-full bg-black text-white px-6 py-4 rounded-md hover:bg-gray-800 transition font-medium">
+                ADD TO CART
+              </button>
+
+              {/* Buy It Now Button */}
+              <div className="bg-gray-100 p-4 rounded-md text-center hover:bg-gray-200">
+                <button className="text-gray-900 font-medium text-sm">
+                  BUY IT NOW
                 </button>
               </div>
 
-              <div className="bg-gray-100 p-4 rounded-md text-center">
-                <p className="text-gray-700 font-medium">
+              {/* No Returns Notice */}
+              <div className="text-center">
+                <p className="text-gray-700 text-sm font-medium">
                   NO RETURNS, CHARGEABLE EXCHANGES
                 </p>
               </div>
 
-              <div className="bg-gray-50 p-5 rounded-lg">
-                <h3 className="font-bold text-gray-900 mb-3">
-                  Product Details
-                </h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-500">Material</p>
-                    <p className="font-medium">{material}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Gender</p>
-                    <p className="font-medium">{gender}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">SKU</p>
-                    <p className="font-medium">{sku}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Category</p>
-                    <p className="font-medium">{category}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                  Description
-                </h3>
-                <p className="text-gray-700 leading-relaxed">
-                  {product.description ||
-                    "Exquisitely crafted jewelry piece designed for elegance and timeless appeal. Perfect for gifting or adding a touch of luxury to your own collection."}
-                </p>
-              </div>
+              {/* Accordion Sections */}
+              <AccordionSection
+                product={product}
+                material={material}
+                gender={gender}
+                sku={sku}
+                category={category}
+              />
             </div>
           </div>
         </div>

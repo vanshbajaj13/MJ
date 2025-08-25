@@ -56,14 +56,26 @@ const productSchema = new mongoose.Schema({
       position: Number,
     },
   ],
-  availableQty: {
-    type: Number,
-    default: 0,
-  },
-  soldQty: {
-    type: Number,
-    default: 0,
-  },
+  // REMOVED: availableQty and soldQty (now handled at size level)
+  sizes: [
+    {
+      size: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Size",
+        required: true,
+      },
+      qtyBuy: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+      soldQty: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+    },
+  ],
   tags: [String],
   isFeatured: {
     type: Boolean,
@@ -75,9 +87,9 @@ const productSchema = new mongoose.Schema({
   },
   options: [
     {
-      name: { type: String, required: true }, // e.g., "Silver Chain"
-      price: { type: Number, required: true }, // e.g., 1599
-      description: { type: String }, // optional
+      name: { type: String, required: true },
+      price: { type: Number, required: true },
+      description: { type: String },
     },
   ],
   createdAt: {
@@ -85,7 +97,6 @@ const productSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
-
 
 // Prevent model recompilation
 const Product =

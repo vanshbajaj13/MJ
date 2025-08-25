@@ -31,13 +31,14 @@ export default function ProductGallery({ images = [] }) {
       <div className="lg:hidden" ref={emblaRef}>
         <div className="flex">
           {images.map((img, i) => (
-            <div className="flex-[0_0_100%] relative aspect-square max-h-[60vh]" key={i}>
+            <div className="flex-[0_0_100%] relative aspect-[1032/1397] w-full max-h-[60vh]" key={i}>
               <Image
                 src={img.url}
                 alt={img.alt || `Product image ${i + 1}`}
                 fill
-                className="object-cover"
+                className="w-full h-full object-cover"
                 priority={i === 0}
+                sizes="100"
               />
             </div>
           ))}
@@ -62,18 +63,19 @@ export default function ProductGallery({ images = [] }) {
         {images.map((img, i) => (
           <div
             key={i}
-            className={`relative ${
+            className={`relative aspect-[1032/1397] w-full max-h-[85vh] ${
               i === 0
-                ? "col-span-2 w-full h-[85vh]" // First image spans full width & bigger
-                : "aspect-square" // Others remain square
+                ? "col-span-2" // First image spans full width & bigger
+                : "" // Others remain square
             }`}
           >
             <Image
               src={img.url}
               alt={img.alt || `Product image ${i + 1}`}
               fill
-              className="object-cover"
+              className="w-full h-full object-cover"
               priority={i === 0}
+              sizes="100"
             />
           </div>
         ))}
