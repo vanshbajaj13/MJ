@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import LoadingScreen from "./components/Loading/LoadingScreen";
-import HomeSlider from "./components/HomeSlider";
-import ProductGrid from "./components/ProductGrid";
-import Footer from "./components/Footer";
+import LoadingScreen from "../components/Loading/LoadingScreen";
+import HomeSlider from "./home/HomeSlider";
+import ProductGrid from "./home/ProductGrid";
+import Footer from "../components/Footer";
 
 export default function Products() {
   const [products, setProducts] = useState([]);

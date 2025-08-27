@@ -6,7 +6,7 @@ import "swiper/css";
 import { permanentMarker } from "../fonts";
 import useSWR from "swr";
 import { useState, useEffect } from "react";
-import CategoryCard from "./Cards/CategoryCard"; // New component
+import CategoryCard from "../../components/Cards/CategoryCard"; // New component
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
@@ -52,8 +52,8 @@ export default function ProductGrid() {
         breakpoints={{
           320: { slidesPerView: 1.5, centeredSlides: true },
           480: { slidesPerView: 3, centeredSlides: true },
-          768: { slidesPerView: 4,centeredSlides: false },
-          999: { slidesPerView: 5,centeredSlides: false },
+          768: { slidesPerView: 4, centeredSlides: false },
+          999: { slidesPerView: 5, centeredSlides: false },
         }}
       >
         {Array.from({

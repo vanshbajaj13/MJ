@@ -1,6 +1,6 @@
 "use client";
 
-import ProductCard from "./Cards/ProductCard";
+import ProductCard from "../../components/Cards/ProductCard";
 import Link from "next/link";
 import { permanentMarker } from "../fonts";
 import useSWR from "swr";

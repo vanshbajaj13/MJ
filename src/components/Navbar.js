@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { permanentMarker } from "../fonts";
+import { permanentMarker } from "../app/fonts";
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -13,7 +13,10 @@ export default function Navbar() {
   return (
     <>
       {/* Fixed Navbar */}
-      <nav className="fixed h-[9vh] top-0 left-0 right-0 flex items-center justify-between px-4 py-3 z-50 border-b-2 border-black bg-[#636364bd] " style={{backdropFilter:"blur(10px)"}}>
+      <nav
+        className="fixed h-[9vh] top-0 left-0 right-0 flex items-center justify-between px-4 py-3 z-50 border-b-2 border-black bg-[#636364bd] "
+        style={{ backdropFilter: "blur(10px)" }}
+      >
         {/* Left side: Animated Toggle Icon and Brand Name */}
         <div className="flex items-center space-x-2">
           <button onClick={toggleMenu} className="focus:outline-none">

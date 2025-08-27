@@ -1,8 +1,8 @@
 // app/page.js
-import HomeSlider from "./components/HomeSlider";
-import Footer from "./components/Footer";
-import ProductGrid from "./components/ProductGrid";
-import LatestLaunch from "./components/LatestLaunch";
+import HomeSlider from "./home/HomeSlider";
+import Footer from "../components/Footer";
+import ProductGrid from "./home/ProductGrid";
+import LatestLaunch from "./home/LatestLaunch";
 import Loading from "./loading";
 import { Suspense } from "react";
 

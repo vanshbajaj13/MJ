@@ -1,5 +1,6 @@
-import ProductGallery from "../../components/ProductGallery";
+import ProductGallery from "./ProductGallery";
 import AccordionSection from "./AccordionSection";
+import AddToBag from "./AddToBag";
 
 async function fetchProduct(slug) {
   const res = await fetch(
@@ -121,13 +122,11 @@ export default async function ProductPage({ params }) {
               </div>
 
               {/* Add to Cart Button */}
-              <button className="w-full bg-black text-white px-6 py-4 rounded-md hover:bg-gray-800 transition font-medium">
-                ADD TO CART
-              </button>
+              <AddToBag />
 
               {/* Buy It Now Button */}
-              <div className="bg-gray-100 p-4 rounded-md text-center hover:bg-gray-200">
-                <button className="text-gray-900 font-medium text-sm">
+              <div className="bg-black text-white p-4 rounded-md text-center">
+                <button className="font-medium text-sm">
                   BUY IT NOW
                 </button>
               </div>
