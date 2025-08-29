@@ -1,4 +1,4 @@
-// context/UserContext.js - Client-side user state management
+// context/UserContext.js - Client-side customer state management
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
@@ -9,7 +9,7 @@ export function UserProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check if user is logged in on app load
+  // Check if customer is logged in on app load
   useEffect(() => {
     checkAuthStatus();
   }, []);
@@ -21,10 +21,13 @@ export function UserProvider({ children }) {
         credentials: "include", // Include cookies
       });
 
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData.user);
+      const data = await response.json();
+
+      if (data.success && data.user) {
+        // Customer is authenticated
+        setUser(data.user);
       } else {
+        // No user or guest user
         setUser(null);
       }
     } catch (error) {
@@ -44,6 +47,8 @@ export function UserProvider({ children }) {
       setUser(null);
     } catch (error) {
       console.error("Logout failed:", error);
+      // Still set user to null even if logout API fails
+      setUser(null);
     }
   };
 

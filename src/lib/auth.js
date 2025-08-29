@@ -15,7 +15,7 @@ export async function verifyToken(token) {
 
 export async function getCurrentUser() {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const token = cookieStore.get("auth-token");
 
     if (!token) {
@@ -39,7 +39,8 @@ export async function getCurrentUser() {
 
 // Middleware function to protect routes
 export async function requireAuth(req) {
-  const token = req.cookies.get("auth-token");
+  const cookieStore = await cookies();
+  const token = cookieStore.get("auth-token");
   
   if (!token) {
     return { error: "Authentication required", status: 401 };

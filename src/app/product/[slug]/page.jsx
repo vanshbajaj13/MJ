@@ -101,28 +101,8 @@ export default async function ProductPage({ params }) {
                 </p>
               </div>
 
-              {/* Size Selector */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-gray-900">Size:</h3>
-                  <button className="text-xs text-gray-500 underline">
-                    Size chart
-                  </button>
-                </div>
-                <div className="flex space-x-3">
-                  {product.sizes.map((s) => (
-                    <button
-                      key={s.size._id}
-                      className="border border-gray-300 px-4 py-2 text-sm font-medium rounded-md hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
-                    >
-                      {s.size.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Add to Cart Button */}
-              <AddToBag />
+              <AddToBag product={product}/>
 
               {/* Buy It Now Button */}
               <div className="bg-black text-white p-4 rounded-md text-center">
