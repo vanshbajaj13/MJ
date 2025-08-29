@@ -199,7 +199,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.3 }}
-                    className="p-y-3 flex-shrink-0 overflow-hidden"
+                    className="py-3 flex-shrink-0 overflow-hidden"
                   >
                     <div className="flex items-center justify-center text-sm text-green-700">
                       <svg
@@ -220,7 +220,7 @@ export default function CartDrawer({ isOpen, onClose }) {
               </AnimatePresence>
 
               {/* Cart Items - Scrollable Area */}
-              <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="flex-1 overflow-hidden overflow-y-auto min-h-0">
                 <AnimatePresence>
                   {loading && (
                     <motion.div
@@ -495,10 +495,10 @@ export default function CartDrawer({ isOpen, onClose }) {
               <AnimatePresence>
                 {items.length > 0 && (
                   <motion.div
-                    initial={{ opacity: 0, y: 50 }}
+                    initial={{ opacity: 0, y: isDesktop ? 50 : -50}}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 50 }}
-                    transition={{ delay: 0.3, duration: 0.4 }}
+                    exit={{ opacity: 0, y: isDesktop ? 50 : -50 }}
+                    transition={{ delay: 0.1, duration: 0.4 }}
                     className="border-t rounded-full border-gray-100 p-4 pb-0 lg:p-6 bg-white flex-shrink-0"
                   >
                     {/* Total */}

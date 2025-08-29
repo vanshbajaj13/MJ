@@ -9,7 +9,6 @@ export default function AddToBag({ product }) {
   const [isAdded, setIsAdded] = useState(false);
   const [selectedSize, setSelectedSize] = useState("");
   const [sizeError, setSizeError] = useState(false);
-  const [quantity, setQuantity] = useState(1);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const { addToCart } = useCart();
@@ -28,11 +27,6 @@ export default function AddToBag({ product }) {
     });
   };
 
-  const handleQuantityChange = (newQuantity) => {
-    if (newQuantity >= 1) {
-      setQuantity(newQuantity);
-    }
-  };
 
   const handleAddToBag = async () => {
     // Require size
@@ -47,7 +41,7 @@ export default function AddToBag({ product }) {
 
     try {
       // Add product to cart
-      await addToCart(product, selectedSize, quantity);
+      await addToCart(product, selectedSize, 1);
 
       // Show success animation
       setIsAdding(false);
@@ -59,7 +53,6 @@ export default function AddToBag({ product }) {
       // Reset "Added!" state after 2 seconds
       setTimeout(() => {
         setIsAdded(false);
-        setQuantity(1); // Reset quantity
       }, 2000);
     } catch (error) {
       console.error("Error adding to bag:", error);
@@ -121,72 +114,23 @@ export default function AddToBag({ product }) {
           </div>
         </div>
 
-        {/* Quantity Selector */}
-        <div>
-          <label className="block text-base font-medium text-gray-900 mb-3">
-            Quantity ({quantity} in cart)
-          </label>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center bg-gray-100 rounded-full">
-              <button
-                onClick={() => handleQuantityChange(quantity - 1)}
-                disabled={quantity <= 1}
-                className="w-10 h-10 flex items-center justify-center hover:bg-gray-200 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M20 12H4"
-                  />
-                </svg>
-              </button>
-              <span className="w-12 text-center font-medium">{quantity}</span>
-              <button
-                onClick={() => handleQuantityChange(quantity + 1)}
-                className="w-10 h-10 flex items-center justify-center hover:bg-gray-200 rounded-full transition-colors"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Add to Cart Button */}
-        <div className="space-y-3">
+        <div className="space-y-6">
           <button
             onClick={handleAddToBag}
             disabled={isAdding || isAdded}
             className={`
-              w-full py-4 px-6 rounded-full font-semibold text-base transition-all duration-300
+              w-full py-4 px-6 bg-gray-100 rounded-md font-semibold text-base transition-all duration-300
               relative overflow-hidden group
               ${
                 isAdded
                   ? "bg-green-500 text-white transform scale-105"
                   : isAdding
                   ? "bg-gray-400 text-white cursor-wait"
-                  : "bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white"
+                  : "text-gray-500 "
               }
               disabled:cursor-not-allowed
-              shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]
+              shadow-xl transform hover:scale-[1.02] active:scale-[0.98]
             `}
           >
             {/* Cart icon animation */}
@@ -256,7 +200,7 @@ export default function AddToBag({ product }) {
               // Handle buy now logic
               console.log("Buy now clicked");
             }}
-            className="w-full bg-gray-900 text-white py-4 px-6 rounded-full font-semibold text-base hover:bg-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+            className="w-full bg-gray-900 text-white py-4 px-6 rounded-md font-semibold text-base hover:bg-gray-800 transition-all duration-300 shadow-2xl transform hover:scale-[1.02] active:scale-[0.98]"
           >
             Buy It Now
           </button>

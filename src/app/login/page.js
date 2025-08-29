@@ -23,7 +23,6 @@ export default function LoginPage() {
   // 🔐 PROTECTION: Redirect if user is already logged in
   useEffect(() => {
     if (!loading && user) {
-      console.log("✅ User already logged in, redirecting...");
       router.push("/"); // Redirect to home page
     }
   }, [user, loading, router]);
@@ -75,9 +74,7 @@ export default function LoginPage() {
       setMessage("Login successful! Redirecting...");
 
       // Redirect to home page
-      setTimeout(() => {
-        router.push("/");
-      }, 1500);
+      router.push("/");
     } catch (err) {
       console.error("Error:", err);
       setMessage("Something went wrong. Please try again.");

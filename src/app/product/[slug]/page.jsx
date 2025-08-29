@@ -101,15 +101,9 @@ export default async function ProductPage({ params }) {
                 </p>
               </div>
 
-              {/* Add to Cart Button */}
+              {/* Add to Cart and Buy now Button */}
               <AddToBag product={product}/>
 
-              {/* Buy It Now Button */}
-              <div className="bg-black text-white p-4 rounded-md text-center">
-                <button className="font-medium text-sm">
-                  BUY IT NOW
-                </button>
-              </div>
 
               {/* No Returns Notice */}
               <div className="text-center">
