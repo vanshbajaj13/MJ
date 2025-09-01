@@ -18,12 +18,15 @@ const CustomerSchema = new mongoose.Schema(
     mobile: {
       type: String,
     },
-    address: {
-      street: { type: String },
-      city: { type: String },
-      state: { type: String },
-      pincode: { type: Number },
-      country: { type: String, default: "India" }, // ✅ Default India
+    addresses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Address",
+      },
+    ],
+    defaultAddress: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Address",
     },
     otp: {
       code: { type: String },
