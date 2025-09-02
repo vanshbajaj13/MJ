@@ -8,13 +8,13 @@ const CHECKOUT_STEPS = {
   PAYMENT: 3,
 };
 
-export default function UnifiedCheckoutForm({ 
-  items, 
-  totalPrice, 
-  user, 
-  clearCart, 
-  onBack, 
-  mobile = false 
+export default function UnifiedCheckoutForm({
+  items,
+  totalPrice,
+  user,
+  clearCart,
+  onBack,
+  mobile = false,
 }) {
   // Main checkout state
   const [currentStep, setCurrentStep] = useState(CHECKOUT_STEPS.VERIFICATION);
@@ -134,7 +134,7 @@ export default function UnifiedCheckoutForm({
 
   const handleSendOtp = async () => {
     const cleanPhone = phoneNumber.replace(/\D/g, "");
-    
+
     if (!validatePhoneNumber(cleanPhone)) {
       setPhoneError("Please enter a valid 10-digit mobile number");
       return;
@@ -166,7 +166,9 @@ export default function UnifiedCheckoutForm({
       }
     } catch (error) {
       console.error("Send OTP error:", error);
-      setPhoneError("Network error. Please check your connection and try again.");
+      setPhoneError(
+        "Network error. Please check your connection and try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -184,7 +186,7 @@ export default function UnifiedCheckoutForm({
       otpRefs.current[index + 1]?.focus();
     }
 
-    if (newOtp.every(digit => digit !== "")) {
+    if (newOtp.every((digit) => digit !== "")) {
       handleVerifyOtp(newOtp.join(""));
     }
   };
@@ -406,7 +408,7 @@ export default function UnifiedCheckoutForm({
         paymentMethod,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const orderData = {
         phoneNumber: verifiedPhone,
@@ -418,13 +420,13 @@ export default function UnifiedCheckoutForm({
         items,
         totalAmount: totalPrice,
         paymentMethod,
-        status: 'pending',
+        status: "pending",
       };
 
-      const response = await fetch('/api/orders', {
-        method: 'POST',
+      const response = await fetch("/api/orders", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(orderData),
       });
@@ -434,12 +436,11 @@ export default function UnifiedCheckoutForm({
         clearCart();
         window.location.href = `/order-confirmation?orderId=${order.orderId}`;
       } else {
-        throw new Error('Failed to create order');
+        throw new Error("Failed to create order");
       }
-
     } catch (error) {
-      console.error('Payment error:', error);
-      alert('Payment failed. Please try again.');
+      console.error("Payment error:", error);
+      alert("Payment failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -455,39 +456,43 @@ export default function UnifiedCheckoutForm({
     }
   };
 
-  const getStepTitle = () => {
-    switch (currentStep) {
-      case CHECKOUT_STEPS.VERIFICATION:
-        return phoneStep === "phone"
-          ? "Verify Your Phone"
-          : "Enter Verification Code";
-      case CHECKOUT_STEPS.ADDRESS:
-        return "Delivery Address";
-      case CHECKOUT_STEPS.PAYMENT:
-        return "Payment";
-      default:
-        return "Checkout";
-    }
-  };
-
-  const getProgressPercentage = () => {
-    if (currentStep === CHECKOUT_STEPS.VERIFICATION && phoneStep === "phone") {
-      return 0;
-    } else if (currentStep === CHECKOUT_STEPS.VERIFICATION && phoneStep === "otp") {
-      return 25;
-    }
-    return (currentStep / Object.keys(CHECKOUT_STEPS).length) * 100;
-  };
-
   const indianStates = [
-    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
-    "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
-    "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
-    "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim",
-    "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand",
-    "West Bengal", "Andaman and Nicobar Islands", "Chandigarh",
-    "Dadra and Nagar Haveli and Daman and Diu", "Lakshadweep", "Delhi",
-    "Puducherry", "Ladakh", "Jammu and Kashmir"
+    "Andhra Pradesh",
+    "Arunachal Pradesh",
+    "Assam",
+    "Bihar",
+    "Chhattisgarh",
+    "Goa",
+    "Gujarat",
+    "Haryana",
+    "Himachal Pradesh",
+    "Jharkhand",
+    "Karnataka",
+    "Kerala",
+    "Madhya Pradesh",
+    "Maharashtra",
+    "Manipur",
+    "Meghalaya",
+    "Mizoram",
+    "Nagaland",
+    "Odisha",
+    "Punjab",
+    "Rajasthan",
+    "Sikkim",
+    "Tamil Nadu",
+    "Telangana",
+    "Tripura",
+    "Uttar Pradesh",
+    "Uttarakhand",
+    "West Bengal",
+    "Andaman and Nicobar Islands",
+    "Chandigarh",
+    "Dadra and Nagar Haveli and Daman and Diu",
+    "Lakshadweep",
+    "Delhi",
+    "Puducherry",
+    "Ladakh",
+    "Jammu and Kashmir",
   ];
 
   // Render phone verification step
@@ -504,15 +509,20 @@ export default function UnifiedCheckoutForm({
           >
             <div className="text-center mb-6">
               <div className="w-16 h-16 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-green-600" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.704"/>
+                <svg
+                  className="w-8 h-8 text-green-600"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.704" />
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Verify via WhatsApp
               </h3>
               <p className="text-gray-600 text-sm">
-                We'll send a verification code to your WhatsApp to secure your order
+                We'll send a verification code to your WhatsApp to secure your
+                order
               </p>
             </div>
 
@@ -564,7 +574,11 @@ export default function UnifiedCheckoutForm({
                   <div className="flex items-center justify-center">
                     <motion.div
                       animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      transition={{
+                        duration: 1,
+                        repeat: Infinity,
+                        ease: "linear",
+                      }}
                       className="rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"
                     />
                     Sending OTP...
@@ -575,7 +589,7 @@ export default function UnifiedCheckoutForm({
               </motion.button>
 
               <p className="text-xs text-gray-500 text-center">
-                By continuing, you agree to receive WhatsApp messages from us. 
+                By continuing, you agree to receive WhatsApp messages from us.
                 Message and data rates may apply.
               </p>
             </div>
@@ -590,8 +604,18 @@ export default function UnifiedCheckoutForm({
           >
             <div className="text-center mb-6">
               <div className="w-16 h-16 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  className="w-8 h-8 text-green-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
@@ -632,7 +656,9 @@ export default function UnifiedCheckoutForm({
               )}
 
               <div className="text-center">
-                <p className="text-sm text-gray-600 mb-2">Didn't receive the code?</p>
+                <p className="text-sm text-gray-600 mb-2">
+                  Didn't receive the code?
+                </p>
                 {resendTimer > 0 ? (
                   <p className="text-sm text-gray-500">
                     Resend OTP in {resendTimer}s
@@ -669,7 +695,11 @@ export default function UnifiedCheckoutForm({
                   <div className="flex items-center justify-center text-sm text-gray-600">
                     <motion.div
                       animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      transition={{
+                        duration: 1,
+                        repeat: Infinity,
+                        ease: "linear",
+                      }}
                       className="rounded-full h-4 w-4 border-2 border-gray-400 border-t-gray-900 mr-2"
                     />
                     Verifying...
@@ -717,8 +747,16 @@ export default function UnifiedCheckoutForm({
               >
                 {selectedAddress?._id === address._id && (
                   <div className="absolute top-4 right-4 w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center">
-                    <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    <svg
+                      className="w-4 h-4 text-white"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
                     </svg>
                   </div>
                 )}
@@ -742,7 +780,8 @@ export default function UnifiedCheckoutForm({
 
                   {address.landmark && (
                     <p className="text-sm text-gray-500 mt-2">
-                      <span className="font-medium">Landmark:</span> {address.landmark}
+                      <span className="font-medium">Landmark:</span>{" "}
+                      {address.landmark}
                     </p>
                   )}
 
@@ -766,8 +805,18 @@ export default function UnifiedCheckoutForm({
         >
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              <svg
+                className="w-5 h-5 text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
               </svg>
             </div>
             <div>
@@ -781,7 +830,10 @@ export default function UnifiedCheckoutForm({
           </div>
 
           <div className="relative w-5 h-5">
-            <span className={`ico-plus ${showAddressForm ? "open" : ""}`} style={{ color: "#6B7280" }} />
+            <span
+              className={`ico-plus ${showAddressForm ? "open" : ""}`}
+              style={{ color: "#6B7280" }}
+            />
           </div>
         </div>
 
@@ -800,9 +852,13 @@ export default function UnifiedCheckoutForm({
                   <input
                     type="text"
                     value={addressFormData.fullName}
-                    onChange={(e) => handleAddressInputChange("fullName", e.target.value)}
+                    onChange={(e) =>
+                      handleAddressInputChange("fullName", e.target.value)
+                    }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.fullName ? "border-red-500" : "border-gray-300"
+                      addressErrors.fullName
+                        ? "border-red-500"
+                        : "border-gray-300"
                     }`}
                     placeholder="Enter your full name"
                   />
@@ -824,7 +880,9 @@ export default function UnifiedCheckoutForm({
                   <input
                     type="email"
                     value={addressFormData.email}
-                    onChange={(e) => handleAddressInputChange("email", e.target.value)}
+                    onChange={(e) =>
+                      handleAddressInputChange("email", e.target.value)
+                    }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
                       addressErrors.email ? "border-red-500" : "border-gray-300"
                     }`}
@@ -849,9 +907,13 @@ export default function UnifiedCheckoutForm({
                 <input
                   type="text"
                   value={addressFormData.addressLine1}
-                  onChange={(e) => handleAddressInputChange("addressLine1", e.target.value)}
+                  onChange={(e) =>
+                    handleAddressInputChange("addressLine1", e.target.value)
+                  }
                   className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                    addressErrors.addressLine1 ? "border-red-500" : "border-gray-300"
+                    addressErrors.addressLine1
+                      ? "border-red-500"
+                      : "border-gray-300"
                   }`}
                   placeholder="House number, building name, street"
                 />
@@ -873,7 +935,9 @@ export default function UnifiedCheckoutForm({
                 <input
                   type="text"
                   value={addressFormData.addressLine2}
-                  onChange={(e) => handleAddressInputChange("addressLine2", e.target.value)}
+                  onChange={(e) =>
+                    handleAddressInputChange("addressLine2", e.target.value)
+                  }
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
                   placeholder="Area, locality, sector"
                 />
@@ -887,7 +951,9 @@ export default function UnifiedCheckoutForm({
                   <input
                     type="text"
                     value={addressFormData.city}
-                    onChange={(e) => handleAddressInputChange("city", e.target.value)}
+                    onChange={(e) =>
+                      handleAddressInputChange("city", e.target.value)
+                    }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
                       addressErrors.city ? "border-red-500" : "border-gray-300"
                     }`}
@@ -910,7 +976,9 @@ export default function UnifiedCheckoutForm({
                   </label>
                   <select
                     value={addressFormData.state}
-                    onChange={(e) => handleAddressInputChange("state", e.target.value)}
+                    onChange={(e) =>
+                      handleAddressInputChange("state", e.target.value)
+                    }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
                       addressErrors.state ? "border-red-500" : "border-gray-300"
                     }`}
@@ -949,7 +1017,9 @@ export default function UnifiedCheckoutForm({
                       )
                     }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.pincode ? "border-red-500" : "border-gray-300"
+                      addressErrors.pincode
+                        ? "border-red-500"
+                        : "border-gray-300"
                     }`}
                     placeholder="123456"
                     maxLength={6}
@@ -971,7 +1041,9 @@ export default function UnifiedCheckoutForm({
                   </label>
                   <select
                     value={addressFormData.addressType}
-                    onChange={(e) => handleAddressInputChange("addressType", e.target.value)}
+                    onChange={(e) =>
+                      handleAddressInputChange("addressType", e.target.value)
+                    }
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
                   >
                     <option value="home">Home</option>
@@ -988,7 +1060,9 @@ export default function UnifiedCheckoutForm({
                 <input
                   type="text"
                   value={addressFormData.landmark}
-                  onChange={(e) => handleAddressInputChange("landmark", e.target.value)}
+                  onChange={(e) =>
+                    handleAddressInputChange("landmark", e.target.value)
+                  }
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
                   placeholder="Near hospital, mall, etc."
                 />
@@ -1019,7 +1093,11 @@ export default function UnifiedCheckoutForm({
                     <div className="flex items-center justify-center">
                       <motion.div
                         animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        transition={{
+                          duration: 1,
+                          repeat: Infinity,
+                          ease: "linear",
+                        }}
                         className="rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"
                       />
                       Saving Address...
@@ -1078,7 +1156,13 @@ export default function UnifiedCheckoutForm({
       >
         <motion.button
           type="button"
-          onClick={() => handleBackToStep(CHECKOUT_STEPS.VERIFICATION)}
+          onClick={() => {
+            setPhoneStep("phone");
+            setOtp(["", "", "", "", "", ""]);
+            setPhoneError("");
+            setResendTimer(0);
+            handleBackToStep(CHECKOUT_STEPS.VERIFICATION);
+          }}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           className="w-full sm:w-auto px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -1114,10 +1198,14 @@ export default function UnifiedCheckoutForm({
         className="space-y-8"
       >
         <div className="bg-gray-50 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Summary</h3>
-          
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Order Summary
+          </h3>
+
           <div className="mb-4 pb-4 border-b border-gray-200">
-            <p className="font-medium text-gray-900">{selectedAddress.fullName}</p>
+            <p className="font-medium text-gray-900">
+              {selectedAddress.fullName}
+            </p>
             <p className="text-sm text-gray-600">{verifiedPhone}</p>
             <p className="text-sm text-gray-600">{selectedAddress.email}</p>
           </div>
@@ -1126,18 +1214,30 @@ export default function UnifiedCheckoutForm({
             <h4 className="font-medium text-gray-900 mb-2">Shipping Address</h4>
             <div className="text-sm text-gray-600">
               <p>{selectedAddress.addressLine1}</p>
-              {selectedAddress.addressLine2 && <p>{selectedAddress.addressLine2}</p>}
-              <p>{selectedAddress.city}, {selectedAddress.state} - {selectedAddress.pincode}</p>
-              {selectedAddress.landmark && <p>Landmark: {selectedAddress.landmark}</p>}
+              {selectedAddress.addressLine2 && (
+                <p>{selectedAddress.addressLine2}</p>
+              )}
+              <p>
+                {selectedAddress.city}, {selectedAddress.state} -{" "}
+                {selectedAddress.pincode}
+              </p>
+              {selectedAddress.landmark && (
+                <p>Landmark: {selectedAddress.landmark}</p>
+              )}
             </div>
           </div>
 
           <div className="space-y-3">
             {items.map((item) => (
-              <div key={`${item.productId}-${item.size}`} className="flex justify-between items-center">
+              <div
+                key={`${item.productId}-${item.size}`}
+                className="flex justify-between items-center"
+              >
                 <div>
                   <p className="font-medium text-gray-900">{item.name}</p>
-                  <p className="text-sm text-gray-600">Size: {item.size} • Qty: {item.quantity}</p>
+                  <p className="text-sm text-gray-600">
+                    Size: {item.size} • Qty: {item.quantity}
+                  </p>
                 </div>
                 <p className="font-semibold text-gray-900">
                   ₹{(item.price * item.quantity).toFixed(2)}
@@ -1155,7 +1255,9 @@ export default function UnifiedCheckoutForm({
         </div>
 
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Method</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Payment Method
+          </h3>
           <div className="space-y-3">
             <label className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
               <input
@@ -1172,7 +1274,9 @@ export default function UnifiedCheckoutForm({
                 </div>
                 <div>
                   <p className="font-medium text-gray-900">Online Payment</p>
-                  <p className="text-sm text-gray-600">Pay securely with UPI, Card, or Net Banking</p>
+                  <p className="text-sm text-gray-600">
+                    Pay securely with UPI, Card, or Net Banking
+                  </p>
                 </div>
               </div>
             </label>
@@ -1188,13 +1292,25 @@ export default function UnifiedCheckoutForm({
               />
               <div className="flex items-center">
                 <div className="w-12 h-8 bg-green-600 rounded mr-3 flex items-center justify-center">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  <svg
+                    className="w-4 h-4 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                    />
                   </svg>
                 </div>
                 <div>
                   <p className="font-medium text-gray-900">Cash on Delivery</p>
-                  <p className="text-sm text-gray-600">Pay when your order is delivered</p>
+                  <p className="text-sm text-gray-600">
+                    Pay when your order is delivered
+                  </p>
                 </div>
               </div>
             </label>
@@ -1217,7 +1333,8 @@ export default function UnifiedCheckoutForm({
             <div>
               <p className="font-medium text-blue-900 mb-1">Secure Payment</p>
               <p className="text-sm text-blue-800">
-                Your payment information is encrypted and secure. We never store your card details.
+                Your payment information is encrypted and secure. We never store
+                your card details.
               </p>
             </div>
           </div>
@@ -1233,7 +1350,7 @@ export default function UnifiedCheckoutForm({
           >
             Back to Address
           </motion.button>
-          
+
           <motion.button
             onClick={handlePayment}
             disabled={loading}
@@ -1256,7 +1373,9 @@ export default function UnifiedCheckoutForm({
               </div>
             ) : (
               <>
-                {paymentMethod === "cod" ? "Place Order" : `Pay ₹${totalPrice.toFixed(2)}`}
+                {paymentMethod === "cod"
+                  ? "Place Order"
+                  : `Pay ₹${totalPrice.toFixed(2)}`}
               </>
             )}
           </motion.button>
@@ -1278,74 +1397,106 @@ export default function UnifiedCheckoutForm({
     }
   };
 
-  if (mobile) {
+  const getStepStatus = (stepNumber) => {
+    if (currentStep > stepNumber) return "completed";
+    if (currentStep === stepNumber) return "current";
+    return "upcoming";
+  };
+
+  const renderProgressBar = () => {
+    const steps = [
+      { number: 1, label: "Mobile", key: CHECKOUT_STEPS.VERIFICATION },
+      { number: 2, label: "Address", key: CHECKOUT_STEPS.ADDRESS },
+      { number: 3, label: "Pay", key: CHECKOUT_STEPS.PAYMENT },
+    ];
+
     return (
-      <div className="h-full flex flex-col bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            {onBack && (
-              <button 
-                onClick={onBack}
-                className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-            )}
-            <h1 className="text-lg font-semibold text-gray-900 flex-1 text-center">
-              {getStepTitle()}
-            </h1>
-            <div className="w-9 h-9"></div>
-          </div>
+      <div className="flex items-center justify-center space-x-2 md:space-x-4">
+        {steps.map((step, index) => {
+          const status = getStepStatus(step.key);
+          return (
+            <div key={step.key} className="flex items-center">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                    status === "completed"
+                      ? "bg-green-500 text-white"
+                      : status === "current"
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-200 text-gray-400"
+                  }`}
+                >
+                  {status === "completed" ? (
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  ) : (
+                    step.number
+                  )}
+                </div>
+                <span
+                  className={`mt-2 text-xs font-medium ${
+                    status === "completed"
+                      ? "text-green-600"
+                      : status === "current"
+                      ? "text-gray-900"
+                      : "text-gray-400"
+                  }`}
+                >
+                  {step.label}
+                </span>
+              </div>
 
-          <div className="w-full bg-gray-200 rounded-full h-1.5">
-            <motion.div
-              className="bg-blue-600 h-1.5 rounded-full"
-              initial={{ width: "0%" }}
-              animate={{ width: `${getProgressPercentage()}%` }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-4">
-            {renderCurrentStep()}
-          </div>
-        </div>
+              {index < steps.length - 1 && (
+                <div className="flex items-center mx-2 md:mx-4">
+                  <div className="flex space-x-1">
+                    <div
+                      className={`w-1 h-1 rounded-full ${
+                        status === "completed" ? "bg-green-400" : "bg-gray-300"
+                      }`}
+                    ></div>
+                    <div
+                      className={`w-1 h-1 rounded-full ${
+                        status === "completed" ? "bg-green-400" : "bg-gray-300"
+                      }`}
+                    ></div>
+                    <div
+                      className={`w-1 h-1 rounded-full ${
+                        status === "completed" ? "bg-green-400" : "bg-gray-300"
+                      }`}
+                    ></div>
+                    <div
+                      className={`w-1 h-1 rounded-full ${
+                        status === "completed" ? "bg-green-400" : "bg-gray-300"
+                      }`}
+                    ></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
-  }
+  };
 
   return (
     <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">
-            Checkout
-          </h1>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <motion.div
-              className="bg-blue-600 h-2 rounded-full"
-              initial={{ width: "0%" }}
-              animate={{ width: `${getProgressPercentage()}%` }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
-            />
-          </div>
+      <div className="max-w-4xl mx-auto lg:p-6">
+        <div className="lg:bg-white lg:rounded-lg lg:shadow-sm py-4 lg:p-6 lg:mb-6">
+          {renderProgressBar()}
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm">
+        <div className="lg:bg-white lg:rounded-lg lg:shadow-sm">
           <div className="p-6">
-            <motion.h2
-              key={`${currentStep}-${phoneStep}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-xl font-semibold text-gray-900 mb-6"
-            >
-              {getStepTitle()}
-            </motion.h2>
-
             {renderCurrentStep()}
           </div>
         </div>

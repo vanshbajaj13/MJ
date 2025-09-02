@@ -113,7 +113,7 @@ export default function OrderSummary({ items, totalPrice, totalItems }) {
       </div>
 
       {/* Desktop Layout - Only visible on larger screens */}
-      <div className="hidden lg:block bg-white rounded-xl shadow-sm p-6 sticky top-6 h-fit">
+      <div className="hidden lg:block bg-gray-50  p-6 sticky top-6 h-fit">
         <h3 className="text-xl font-bold text-gray-900 mb-6">
           Order Summary
         </h3>

@@ -52,21 +52,47 @@ export default function CheckoutPage() {
     return <EmptyCartState onContinueShopping={() => router.push("/")} />;
   }
 
+  const handleBack = () => {
+    router.back();
+  };
+
   return (
-    <div className="fixed inset-0 bg-gray-50 z-50 flex flex-col m-0">
-      {/* Unified layout using CSS for responsive behavior */}
-      <div className="flex flex-col lg:flex-row h-full">
-        {/* Order Summary - appears first on mobile, second on desktop */}
-        <div className="lg:hidden order-1 flex-shrink-0">
+    <div className="fixed inset-0 bg-gray-50 z-50 flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="bg-white rounded-lg shadow-sm p-4 px-6 flex justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
+        <button
+          onClick={handleBack}
+          className="p-2 hover:bg-gray-100 rounded-full transition-colors group"
+        >
+          <svg
+            className="w-6 h-6 text-gray-400 group-hover:text-gray-600"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+      
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* Order Summary - fixed position, no scrolling */}
+        <div className="order-0 lg:block lg:w-96 flex-shrink-0 lg:p-6">
           <OrderSummary
             items={items}
             totalPrice={totalPrice}
             totalItems={totalItems}
           />
         </div>
-
-        {/* Checkout Form - appears second on mobile, first on desktop */}
-        <div className="order-2 lg:order-1 flex-1 overflow-auto p-4 lg:p-6">
+        {/* Checkout Form - scrollable on both mobile and desktop */}
+        <div className="flex-1 overflow-auto lg:p-6 scrollbar-hide">
           <CheckoutForm
             items={items}
             totalPrice={totalPrice}
@@ -75,14 +101,6 @@ export default function CheckoutPage() {
           />
         </div>
 
-        {/* Order Summary for desktop - appears in sidebar */}
-        <div className="hidden lg:block lg:order-2 w-96 flex-shrink-0 p-6">
-          <OrderSummary
-            items={items}
-            totalPrice={totalPrice}
-            totalItems={totalItems}
-          />
-        </div>
       </div>
     </div>
   );

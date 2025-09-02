@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useReducer, useEffect, useRef } from "react";
-import { useUser } from "./UserContext"; // Keep your existing UserContext that manages Customer
+import { useUser } from "./UserContext";
 
 const CartContext = createContext();
 
@@ -21,7 +21,6 @@ const cartReducer = (state, action) => {
       );
 
       if (existingItemIndex > -1) {
-        // Update quantity if item exists
         const updatedItems = state.items.map((item, index) =>
           index === existingItemIndex
             ? { ...item, quantity: item.quantity + action.payload.quantity }
@@ -32,7 +31,6 @@ const cartReducer = (state, action) => {
           items: updatedItems,
         };
       } else {
-        // Add new item
         return {
           ...state,
           items: [...state.items, action.payload],
@@ -47,7 +45,7 @@ const cartReducer = (state, action) => {
           item.size === action.payload.size
             ? { ...item, quantity: action.payload.quantity }
             : item
-        ).filter(item => item.quantity > 0), // Remove items with 0 quantity
+        ).filter(item => item.quantity > 0),
       };
 
     case "REMOVE_ITEM":
@@ -57,6 +55,17 @@ const cartReducer = (state, action) => {
           (item) => 
             !(item.productId === action.payload.productId && 
               item.size === action.payload.size)
+        ),
+      };
+
+    case "REMOVE_MULTIPLE_ITEMS":
+      return {
+        ...state,
+        items: state.items.filter(item => 
+          !action.payload.some(removeItem => 
+            item.productId === removeItem.productId && 
+            item.size === removeItem.size
+          )
         ),
       };
 
@@ -72,6 +81,12 @@ const cartReducer = (state, action) => {
         loading: action.payload,
       };
 
+    case "SET_OPERATION_IN_PROGRESS":
+      return {
+        ...state,
+        operationInProgress: action.payload,
+      };
+
     default:
       return state;
   }
@@ -81,6 +96,7 @@ const cartReducer = (state, action) => {
 const initialState = {
   items: [],
   loading: false,
+  operationInProgress: false,
 };
 
 export function CartProvider({ children }) {
@@ -88,6 +104,11 @@ export function CartProvider({ children }) {
   const { user } = useUser();
   const syncInProgress = useRef(false);
   const initialized = useRef(false);
+  
+  // Queue for batch operations
+  const operationQueue = useRef([]);
+  const isProcessingQueue = useRef(false);
+  const queueTimeoutRef = useRef(null);
 
   // Load cart from localStorage on initial render (for guests)
   useEffect(() => {
@@ -101,7 +122,7 @@ export function CartProvider({ children }) {
           }
         } catch (error) {
           console.error("Error parsing saved cart:", error);
-          localStorage.removeItem("guestCart"); // Remove corrupted data
+          localStorage.removeItem("guestCart");
         }
       }
       initialized.current = true;
@@ -113,10 +134,8 @@ export function CartProvider({ children }) {
     if (!initialized.current) return;
 
     if (user && !syncInProgress.current) {
-      // User logged in - sync local cart with database
       syncCartWithDatabase();
     } else if (!user) {
-      // User logged out - load from localStorage
       const savedCart = localStorage.getItem("guestCart");
       if (savedCart) {
         try {
@@ -145,7 +164,102 @@ export function CartProvider({ children }) {
     }
   }, [state.items, user]);
 
-  // Sync local cart with database when user logs in
+  // Process operation queue
+  const processOperationQueue = async () => {
+    if (isProcessingQueue.current || operationQueue.current.length === 0 || !user) {
+      return;
+    }
+
+    isProcessingQueue.current = true;
+    const operations = [...operationQueue.current];
+    operationQueue.current = [];
+
+    try {
+      // Group operations by type
+      const removeOperations = operations.filter(op => op.type === 'remove');
+      const updateOperations = operations.filter(op => op.type === 'update');
+      const addOperations = operations.filter(op => op.type === 'add');
+
+      // Process removes in batch
+      if (removeOperations.length > 0) {
+        await fetch("/api/cart/batch-remove", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ 
+            items: removeOperations.map(op => ({
+              productId: op.productId,
+              size: op.size
+            }))
+          }),
+        });
+      }
+
+      // Process updates in batch
+      if (updateOperations.length > 0) {
+        await fetch("/api/cart/batch-update", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ 
+            items: updateOperations.map(op => ({
+              productId: op.productId,
+              size: op.size,
+              quantity: op.quantity
+            }))
+          }),
+        });
+      }
+
+      // Process adds in batch
+      if (addOperations.length > 0) {
+        await fetch("/api/cart/batch-add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ items: addOperations }),
+        });
+      }
+
+    } catch (error) {
+      console.error("Error processing operation queue:", error);
+    } finally {
+      isProcessingQueue.current = false;
+      
+      // Process any new operations that were added while processing
+      if (operationQueue.current.length > 0) {
+        setTimeout(processOperationQueue, 100);
+      }
+    }
+  };
+
+  // Debounced queue processing
+  const scheduleQueueProcessing = () => {
+    if (queueTimeoutRef.current) {
+      clearTimeout(queueTimeoutRef.current);
+    }
+    
+    queueTimeoutRef.current = setTimeout(() => {
+      processOperationQueue();
+    }, 300); // 300ms debounce
+  };
+
+  // Add operation to queue
+  const queueOperation = (operation) => {
+    if (!user) return;
+    
+    // Remove duplicate operations for the same item
+    operationQueue.current = operationQueue.current.filter(op => 
+      !(op.productId === operation.productId && 
+        op.size === operation.size && 
+        op.type === operation.type)
+    );
+    
+    operationQueue.current.push(operation);
+    scheduleQueueProcessing();
+  };
+
+  // Existing methods with queue integration...
   const syncCartWithDatabase = async () => {
     if (syncInProgress.current) return;
     
@@ -153,11 +267,9 @@ export function CartProvider({ children }) {
     dispatch({ type: "SET_LOADING", payload: true });
     
     try {
-      // Get local cart items
       const localItems = state.items;
       
       if (localItems.length > 0) {
-        // Sync local items with database
         const response = await fetch("/api/cart/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -168,19 +280,15 @@ export function CartProvider({ children }) {
         if (response.ok) {
           const data = await response.json();
           dispatch({ type: "SET_CART", payload: data.cart?.items || [] });
-          // Clear localStorage after successful sync
           localStorage.removeItem("guestCart");
         } else {
-          // If sync fails, load existing cart from database
           await loadCartFromDatabase();
         }
       } else {
-        // Load existing cart from database
         await loadCartFromDatabase();
       }
     } catch (error) {
       console.error("Error syncing cart:", error);
-      // Fallback to loading from database
       await loadCartFromDatabase();
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
@@ -188,7 +296,6 @@ export function CartProvider({ children }) {
     }
   };
 
-  // Load cart from database
   const loadCartFromDatabase = async () => {
     if (!user) return;
     
@@ -210,7 +317,6 @@ export function CartProvider({ children }) {
     }
   };
 
-  // Add item to cart
   const addToCart = async (product, size, quantity = 1) => {
     const cartItem = {
       productId: product._id,
@@ -222,99 +328,72 @@ export function CartProvider({ children }) {
       slug: product.slug,
     };
 
-    // Update local state immediately for better UX
     dispatch({ type: "ADD_ITEM", payload: cartItem });
-
-    // If user is logged in, also update database
-    if (user) {
-      try {
-        const response = await fetch("/api/cart/add", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(cartItem),
-        });
-
-        if (!response.ok) {
-          console.error("Failed to add to database cart");
-          // Optionally revert the local change or show error message
-        }
-      } catch (error) {
-        console.error("Error adding to database cart:", error);
-      }
-    }
+    queueOperation({ type: 'add', ...cartItem });
   };
 
-  // Update item quantity
   const updateQuantity = async (productId, size, quantity) => {
-    // Update local state immediately
     dispatch({ 
       type: "UPDATE_QUANTITY", 
       payload: { productId, size, quantity } 
     });
-
-    // If user is logged in, also update database
-    if (user) {
-      try {
-        const response = await fetch("/api/cart/update", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ productId, size, quantity }),
-        });
-
-        if (!response.ok) {
-          console.error("Failed to update database cart");
-        }
-      } catch (error) {
-        console.error("Error updating database cart:", error);
-      }
-    }
+    
+    queueOperation({ 
+      type: 'update', 
+      productId, 
+      size, 
+      quantity 
+    });
   };
 
-  // Remove item from cart
   const removeFromCart = async (productId, size) => {
-    // Update local state immediately
     dispatch({ 
       type: "REMOVE_ITEM", 
       payload: { productId, size } 
     });
-
-    // If user is logged in, also update database
-    if (user) {
-      try {
-        const response = await fetch("/api/cart/remove", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ productId, size }),
-        });
-
-        if (!response.ok) {
-          console.error("Failed to remove from database cart");
-        }
-      } catch (error) {
-        console.error("Error removing from database cart:", error);
-      }
-    }
+    
+    queueOperation({ 
+      type: 'remove', 
+      productId, 
+      size 
+    });
   };
 
-  // Clear entire cart
-  const clearCart = async () => {
+  // New method for removing multiple items at once
+  const removeMultipleFromCart = async (itemsToRemove) => {
+    if (!Array.isArray(itemsToRemove) || itemsToRemove.length === 0) return;
+    
     // Update local state immediately
-    dispatch({ type: "CLEAR_CART" });
+    dispatch({ 
+      type: "REMOVE_MULTIPLE_ITEMS", 
+      payload: itemsToRemove 
+    });
 
-    // If user is logged in, also clear database
+    // Queue all remove operations
+    itemsToRemove.forEach(item => {
+      queueOperation({
+        type: 'remove',
+        productId: item.productId,
+        size: item.size
+      });
+    });
+  };
+
+  const clearCart = async () => {
+    dispatch({ type: "CLEAR_CART" });
+    
+    // Clear the queue and send immediate clear request
+    operationQueue.current = [];
+    if (queueTimeoutRef.current) {
+      clearTimeout(queueTimeoutRef.current);
+    }
+
     if (user) {
       try {
-        const response = await fetch("/api/cart/clear", {
+        await fetch("/api/cart/clear", {
           method: "DELETE",
           credentials: "include",
         });
-
-        if (!response.ok) {
-          console.error("Failed to clear database cart");
-        }
       } catch (error) {
         console.error("Error clearing database cart:", error);
       }
@@ -331,11 +410,13 @@ export function CartProvider({ children }) {
   const value = {
     items: state.items,
     loading: state.loading,
+    operationInProgress: state.operationInProgress,
     totalItems,
     totalPrice,
     addToCart,
     updateQuantity,
     removeFromCart,
+    removeMultipleFromCart, // New method
     clearCart,
   };
 
