@@ -2,12 +2,13 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
+import { useSwipeable } from "react-swipeable";
 
 export default function OrderSummary({ items, totalPrice, totalItems }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const contentRef = useRef(null);
   const [height, setHeight] = useState("0px");
-  
+
   useEffect(() => {
     if (contentRef.current) {
       setHeight(isExpanded ? `${contentRef.current.scrollHeight}px` : "0px");
@@ -18,10 +19,21 @@ export default function OrderSummary({ items, totalPrice, totalItems }) {
     setIsExpanded(!isExpanded);
   };
 
+  const handlers = useSwipeable({
+    onSwipedUp: () => setIsExpanded(false),
+    onSwipedDown: () => setIsExpanded(true),
+    preventScrollOnSwipe: true,
+    trackTouch: true,
+    trackMouse: true,
+  });
+
   return (
     <>
       {/* Mobile Layout - Only visible on small screens */}
-      <div className="lg:hidden bg-white border-b border-gray-200">
+      <div
+        className="lg:hidden bg-white border-b border-gray-200 rounded-b-2xl"
+        {...handlers}
+      >
         {/* Mobile Header - Always Visible */}
         <div
           onClick={toggleExpanded}
@@ -51,13 +63,15 @@ export default function OrderSummary({ items, totalPrice, totalItems }) {
 
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <p className="font-bold text-gray-900">₹{totalPrice.toFixed(2)}</p>
+              <p className="font-bold text-gray-900">
+                ₹{totalPrice.toFixed(2)}
+              </p>
               <p className="text-xs text-green-600">Free shipping</p>
             </div>
             <div className="relative w-5 h-5">
               <span
                 className={`ico-plus ${isExpanded ? "open" : ""}`}
-                style={{ color: '#6B7280' }}
+                style={{ color: "#6B7280" }}
               />
             </div>
           </div>
@@ -67,9 +81,9 @@ export default function OrderSummary({ items, totalPrice, totalItems }) {
         <div
           ref={contentRef}
           style={{ maxHeight: height }}
-          className="overflow-hidden transition-all duration-700 ease-in-out"
+          className="overflow-hidden transition-all duration-700 ease-in-out rounded-b-2xl"
         >
-          <div className="border-t border-gray-100">
+          <div className="border-t border-gray-100 rounded-b-2xl">
             <MobileOrderContent items={items} totalPrice={totalPrice} />
           </div>
         </div>
@@ -114,14 +128,15 @@ export default function OrderSummary({ items, totalPrice, totalItems }) {
 
       {/* Desktop Layout - Only visible on larger screens */}
       <div className="hidden lg:block bg-gray-50  p-6 sticky top-6 h-fit">
-        <h3 className="text-xl font-bold text-gray-900 mb-6">
-          Order Summary
-        </h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-6">Order Summary</h3>
 
         {/* Desktop Items List */}
         <div className="space-y-4 mb-6 max-h-80 overflow-y-auto">
           {items.map((item) => (
-            <DesktopOrderItem key={`${item.productId}-${item.size}`} item={item} />
+            <DesktopOrderItem
+              key={`${item.productId}-${item.size}`}
+              item={item}
+            />
           ))}
         </div>
 
@@ -134,7 +149,7 @@ export default function OrderSummary({ items, totalPrice, totalItems }) {
 
 function MobileOrderContent({ items, totalPrice }) {
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4 rounded-b-2xl">
       {/* Items List */}
       <div className="space-y-3 max-h-64 overflow-y-auto">
         {items.map((item, index) => (
@@ -192,7 +207,9 @@ function DesktopOrderItem({ item }) {
 
 function ProductImage({ item, size }) {
   return (
-    <div className={`${size} bg-gray-100 rounded-lg overflow-hidden flex-shrink-0`}>
+    <div
+      className={`${size} bg-gray-100 rounded-lg overflow-hidden flex-shrink-0`}
+    >
       {item.image ? (
         <Image
           src={item.image}
@@ -259,6 +276,34 @@ function MobilePriceBreakdown({ totalPrice }) {
           />
         </svg>
         Secure checkout with SSL encryption
+      </div>
+      <div className="flex flex-col items-center justify-center mt-0 text-gray-500">
+        <motion.svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          initial={{ y: 5, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{
+            duration: 0.6,
+            repeat: Infinity,
+            repeatType: "reverse",
+          }}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M7 7l5-5 5 5"
+          />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M7 14l5-5 5 5"
+          />
+        </motion.svg>
       </div>
     </div>
   );

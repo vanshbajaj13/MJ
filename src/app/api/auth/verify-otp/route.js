@@ -70,13 +70,17 @@ export async function POST(request) {
     
     // OTP verified successfully - Create secure session
     const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-secret-key');
+    const sessionId = crypto.randomUUID(); // Generate unique session ID
+    
     const token = await new SignJWT({ 
       phoneNumber, 
       verified: true,
-      timestamp: Date.now()
+      timestamp: Date.now(), // Current timestamp for session age calculation
+      sessionId // Add session ID for better session management
     })
     .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('2d') // Valid for 2 days
+    .setIssuedAt()
+    .setExpirationTime('48h') // Changed from '2d' to '48h' for consistency
     .sign(secret);
 
     // Create the response
@@ -84,14 +88,15 @@ export async function POST(request) {
       message: 'Phone number verified successfully',
       phoneNumber: phoneNumber,
       verified: true,
+      sessionId // Optional: include in response for debugging
     });
 
-    // Set secure HTTP-only cookie
+    // Set secure HTTP-only cookie - FIXED: Now matches token expiry
     response.cookies.set('checkout-session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 3600, // 1 hour
+      maxAge: 48 * 60 * 60, // 48 hours (matches JWT expiry and verification logic)
       path: '/'
     });
 

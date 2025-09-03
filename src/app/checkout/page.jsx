@@ -18,22 +18,32 @@ export default function CheckoutPage() {
   const { user, loading: userLoading } = useUser();
   const [isInitialized, setIsInitialized] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
+  const [countdown, setCountdown] = useState(10);
 
-  // Wait for both cart and user contexts to initialize
+
   useEffect(() => {
-    if (!cartLoading && !userLoading) {
-      setIsInitialized(true);
+  if (!cartLoading && !userLoading) {
+    setIsInitialized(true);
 
-      // Small delay to prevent flash and allow for any async cart loading
+    if (items.length === 0) {
+      // countdown timer
+      const interval = setInterval(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+
+      // redirect after 10s
       const timer = setTimeout(() => {
-        if (items.length === 0) {
-          setShouldRedirect(true);
-        }
-      }, 100);
+        setShouldRedirect(true);
+      }, 10000);
 
-      return () => clearTimeout(timer);
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timer);
+      };
     }
-  }, [cartLoading, userLoading, items.length]);
+  }
+}, [cartLoading, userLoading, items.length]);
+
 
   // Handle redirect after state is stable
   useEffect(() => {
@@ -49,8 +59,14 @@ export default function CheckoutPage() {
 
   // Show empty cart state after everything has loaded
   if (items.length === 0) {
-    return <EmptyCartState onContinueShopping={() => router.push("/")} />;
-  }
+  return (
+    <EmptyCartState
+      countdown={countdown}
+      onContinueShopping={() => router.push("/")}
+    />
+  );
+}
+
 
   const handleBack = () => {
     router.back();
@@ -84,7 +100,7 @@ export default function CheckoutPage() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Order Summary - fixed position, no scrolling */}
-        <div className="order-0 lg:block lg:w-96 flex-shrink-0 lg:p-6">
+        <div className="order-0 lg:block lg:w-96 flex-shrink-0 lg:p-6 rounded-b-2xl">
           <OrderSummary
             items={items}
             totalPrice={totalPrice}
@@ -92,7 +108,7 @@ export default function CheckoutPage() {
           />
         </div>
         {/* Checkout Form - scrollable on both mobile and desktop */}
-        <div className="flex-1 overflow-auto lg:p-6 scrollbar-hide">
+        <div className="flex-1 overflow-auto lg:p-6 lg:pt-0 scrollbar-hide">
           <CheckoutForm
             items={items}
             totalPrice={totalPrice}
@@ -220,8 +236,7 @@ function CheckoutLoadingState() {
   );
 }
 
-// Professional empty cart state component
-function EmptyCartState({ onContinueShopping }) {
+function EmptyCartState({ onContinueShopping, countdown }) {
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
@@ -246,10 +261,19 @@ function EmptyCartState({ onContinueShopping }) {
         <h2 className="text-2xl font-bold text-gray-900 mb-2">
           Your cart is empty
         </h2>
-        <p className="text-gray-600 mb-8">
+        <p className="text-gray-600 mb-4">
           Looks like you haven't added any items to your cart yet. Start
           shopping to fill it up!
         </p>
+
+        {/* Countdown message */}
+        {countdown > 0 && (
+          <p className="text-sm text-gray-500 mb-6">
+            You will be redirected to the home page in{" "}
+            <span className="font-semibold text-gray-900">{countdown}</span>{" "}
+            seconds...
+          </p>
+        )}
 
         {/* Actions */}
         <div className="space-y-3">

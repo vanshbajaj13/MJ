@@ -8,6 +8,67 @@ const CHECKOUT_STEPS = {
   PAYMENT: 3,
 };
 
+// Loading skeleton for saved addresses
+const AddressCardSkeleton = () => (
+  <div className="animate-pulse">
+    <div className="p-4 border-2 border-gray-200 rounded-xl">
+      <div className="flex justify-between items-start mb-3">
+        <div className="flex items-center gap-2">
+          <div className="h-5 bg-gray-200 rounded w-32"></div>
+          <div className="h-5 bg-gray-100 rounded w-12"></div>
+        </div>
+        <div className="w-6 h-6 bg-gray-200 rounded-full"></div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-4 bg-gray-200 rounded w-full"></div>
+        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+        <div className="h-4 bg-gray-100 rounded w-1/2"></div>
+      </div>
+    </div>
+  </div>
+);
+
+// Initial loading component
+const InitialLoader = () => (
+  <div className="bg-gray-50 min-h-screen">
+    <div className="max-w-4xl mx-auto lg:p-6">
+      <div className="lg:bg-white lg:rounded-lg lg:shadow-sm py-4 lg:p-6 lg:mb-6">
+        <div className="flex items-center justify-center space-x-4">
+          {[1, 2, 3].map((step, index) => (
+            <div key={step} className="flex items-center">
+              <div className="flex flex-col items-center">
+                <div className="w-6 h-6 bg-gray-200 rounded-full animate-pulse"></div>
+                <div className="mt-2 h-3 bg-gray-200 rounded w-12 animate-pulse"></div>
+              </div>
+              {index < 2 && (
+                <div className="flex items-center mx-4">
+                  <div className="flex space-x-1">
+                    {[1, 2, 3, 4].map((dot) => (
+                      <div
+                        key={dot}
+                        className="w-1 h-1 bg-gray-200 rounded-full animate-pulse"
+                      ></div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="lg:bg-white lg:rounded-lg lg:shadow-sm">
+        <div className="p-6">
+          <div className="max-w-md mx-auto text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-full animate-pulse"></div>
+            <div className="h-6 bg-gray-200 rounded mx-auto mb-2 w-48 animate-pulse"></div>
+            <div className="h-4 bg-gray-100 rounded mx-auto w-64 animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 export default function UnifiedCheckoutForm({
   items,
   totalPrice,
@@ -16,6 +77,10 @@ export default function UnifiedCheckoutForm({
   onBack,
   mobile = false,
 }) {
+  // Session and initialization state
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [sessionCheckComplete, setSessionCheckComplete] = useState(false);
+
   // Main checkout state
   const [currentStep, setCurrentStep] = useState(CHECKOUT_STEPS.VERIFICATION);
   const [isVerified, setIsVerified] = useState(false);
@@ -48,6 +113,7 @@ export default function UnifiedCheckoutForm({
   const [selectedAddress, setSelectedAddress] = useState(null);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
   const contentRef = useRef(null);
   const [formHeight, setFormHeight] = useState("0px");
 
@@ -74,40 +140,60 @@ export default function UnifiedCheckoutForm({
     }
   }, [showAddressForm, addressFormData, addressErrors]);
 
-  // Check verification status on mount
+  // Enhanced session check on mount with proper state management
   useEffect(() => {
     const checkVerificationStatus = async () => {
       try {
-        const response = await fetch("/api/auth/verify-session");
+        setIsInitializing(true);
+
+        const response = await fetch("/api/auth/verify-session", {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+        });
+
         if (response.ok) {
           const data = await response.json();
           if (data.verified) {
+            // User has valid session - set up verified state
             setIsVerified(true);
             setVerifiedPhone(data.phoneNumber);
             setPhoneNumber(data.phoneNumber.replace("+91", ""));
             setPhoneStep("otp");
             setCurrentStep(CHECKOUT_STEPS.ADDRESS);
+
+            // Pre-load addresses in background
+            loadSavedAddresses(data.phoneNumber);
+          } else {
+            // No valid session - start from verification
+            setCurrentStep(CHECKOUT_STEPS.VERIFICATION);
           }
+        } else {
+          // API error - start from verification
+          setCurrentStep(CHECKOUT_STEPS.VERIFICATION);
         }
       } catch (error) {
         console.error("Session check failed:", error);
+        setCurrentStep(CHECKOUT_STEPS.VERIFICATION);
+      } finally {
+        setIsInitializing(false);
+        setSessionCheckComplete(true);
       }
     };
 
     checkVerificationStatus();
   }, []);
 
-  // Load saved addresses when phone is verified
-  useEffect(() => {
-    if (verifiedPhone && currentStep >= CHECKOUT_STEPS.ADDRESS) {
-      loadSavedAddresses();
-    }
-  }, [verifiedPhone, currentStep]);
+  // Load saved addresses with loading state
+  const loadSavedAddresses = async (phoneNumber = verifiedPhone) => {
+    if (!phoneNumber) return;
 
-  const loadSavedAddresses = async () => {
     try {
+      setIsLoadingAddresses(true);
       const response = await fetch(
-        `/api/user/addresses?phone=${encodeURIComponent(verifiedPhone)}`
+        `/api/user/addresses?phone=${encodeURIComponent(phoneNumber)}`
       );
       if (response.ok) {
         const data = await response.json();
@@ -115,8 +201,26 @@ export default function UnifiedCheckoutForm({
       }
     } catch (error) {
       console.error("Failed to load addresses:", error);
+    } finally {
+      setIsLoadingAddresses(false);
     }
   };
+
+  // Load addresses when phone is verified (but not during initial session check)
+  useEffect(() => {
+    if (
+      verifiedPhone &&
+      sessionCheckComplete &&
+      currentStep >= CHECKOUT_STEPS.ADDRESS
+    ) {
+      loadSavedAddresses();
+    }
+  }, [verifiedPhone, sessionCheckComplete, currentStep]);
+
+  // Show loading screen during initialization
+  if (isInitializing || !sessionCheckComplete) {
+    return <InitialLoader />;
+  }
 
   // Phone verification functions
   const validatePhoneNumber = (phone) => {
@@ -508,7 +612,7 @@ export default function UnifiedCheckoutForm({
             transition={{ duration: 0.3 }}
           >
             <div className="text-center mb-6">
-              <div className="w-16 h-16 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-green-100 to-green-50 rounded-full flex items-center justify-center shadow-sm">
                 <svg
                   className="w-8 h-8 text-green-600"
                   viewBox="0 0 24 24"
@@ -520,7 +624,7 @@ export default function UnifiedCheckoutForm({
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Verify via WhatsApp
               </h3>
-              <p className="text-gray-600 text-sm">
+              <p className="text-gray-600 text-sm leading-relaxed">
                 We'll send a verification code to your WhatsApp to secure your
                 order
               </p>
@@ -603,7 +707,7 @@ export default function UnifiedCheckoutForm({
             transition={{ duration: 0.3 }}
           >
             <div className="text-center mb-6">
-              <div className="w-16 h-16 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-green-100 to-green-50 rounded-full flex items-center justify-center shadow-sm">
                 <svg
                   className="w-8 h-8 text-green-600"
                   fill="none"
@@ -713,42 +817,73 @@ export default function UnifiedCheckoutForm({
     </div>
   );
 
-  // Render address step
+  // Enhanced address step with better UI and loading states
   const renderAddressStep = () => (
     <div className="max-w-2xl mx-auto space-y-6">
-      {savedAddresses.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-4"
-        >
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Select Delivery Address
-            </h3>
-            <span className="text-sm text-gray-500">
+      {/* Saved Addresses Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-4"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Select Delivery Address
+          </h3>
+          {!isLoadingAddresses && savedAddresses.length > 0 && (
+            <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
               {savedAddresses.length} saved address
               {savedAddresses.length > 1 ? "es" : ""}
             </span>
-          </div>
+          )}
+        </div>
 
+        {/* Loading State for Addresses */}
+        {isLoadingAddresses ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-center py-8">
+              <div className="flex items-center text-gray-600">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{
+                    duration: 1,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }}
+                  className="rounded-full h-5 w-5 border-2 border-gray-400 border-t-gray-900 mr-3"
+                />
+                <span className="text-sm">Loading your saved addresses...</span>
+              </div>
+            </div>
+            {[1, 2].map((i) => (
+              <AddressCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : savedAddresses.length > 0 ? (
+          /* Saved Addresses List */
           <div className="space-y-3">
             {savedAddresses.map((address, index) => (
               <motion.div
                 key={address._id || index}
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
-                className={`relative p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 ${
+                className={`group relative p-5 border-2 rounded-2xl cursor-pointer transition-all duration-300 ${
                   selectedAddress?._id === address._id
-                    ? "border-gray-900 bg-gray-50 shadow-md"
-                    : "border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                    ? "border-gray-900 bg-gradient-to-br from-gray-50 to-white shadow-lg ring-1 ring-gray-900/5"
+                    : "border-gray-200 hover:border-gray-300 hover:shadow-md hover:bg-gray-50/50"
                 }`}
                 onClick={() => handleAddressSelect(address)}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
               >
+                {/* Selection Indicator */}
                 {selectedAddress?._id === address._id && (
-                  <div className="absolute top-4 right-4 w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center">
-                    <svg
-                      className="w-4 h-4 text-white"
+                  <div className="absolute bottom-4 right-4 w-6 h-6 bg-green-100  rounded-full flex items-center justify-center shadow-sm">
+                    <motion.svg
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="w-4 h-4 text-green-500"
                       fill="currentColor"
                       viewBox="0 0 20 20"
                     >
@@ -757,54 +892,136 @@ export default function UnifiedCheckoutForm({
                         d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
                         clipRule="evenodd"
                       />
-                    </svg>
+                    </motion.svg>
                   </div>
                 )}
+                <div className="absolute top-4 right-4 w-6 h-6  rounded-full flex items-center justify-center shadow-sm">
+                  <span
+                    className={`text-xs font-medium px-2 py-1 rounded-full capitalize bg-gray-400 text-white`}
+                  >
+                    {address.addressType}
+                  </span>
+                </div>
 
                 <div className="pr-8">
-                  <div className="flex items-center gap-2 mb-2">
-                    <p className="font-semibold text-gray-900">
-                      {address.fullName}
-                    </p>
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full capitalize">
-                      {address.addressType}
-                    </span>
+                  {/* Header with name and type */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <svg
+                        className="w-4 h-4 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                        />
+                      </svg>
+                      <p className="font-semibold text-gray-900 text-lg">
+                        {address.fullName}
+                      </p>
+                    </div>
                   </div>
 
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                    {address.addressLine1}
-                    {address.addressLine2 && `, ${address.addressLine2}`}
-                    <br />
-                    {address.city}, {address.state} - {address.pincode}
-                  </p>
-
-                  {address.landmark && (
-                    <p className="text-sm text-gray-500 mt-2">
-                      <span className="font-medium">Landmark:</span>{" "}
-                      {address.landmark}
+                  {/* Address Details */}
+                  <div className="space-y-2">
+                    <p className="text-gray-700 leading-relaxed">
+                      <span className="inline-flex items-center gap-1 mb-1">
+                        <svg
+                          className="w-4 h-4 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                        </svg>
+                      </span>
+                      {address.addressLine1}
+                      {address.addressLine2 && `, ${address.addressLine2}`}
+                      <br />
+                      {address.city}, {address.state} -{" "}
+                      <span className="font-medium">{address.pincode}</span>
                     </p>
-                  )}
 
-                  <p className="text-sm text-gray-500 mt-2">{address.email}</p>
+                    {/* {address.landmark && (
+                      <p className="text-sm text-gray-500 flex items-center gap-1">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2v16z" />
+                        </svg>
+                        <span className="font-medium">Landmark:</span> {address.landmark}
+                      </p>
+                    )} */}
+
+                    {/* <p className="text-sm text-gray-500 flex items-center gap-1">
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      {address.email}
+                    </p> */}
+                  </div>
                 </div>
               </motion.div>
             ))}
           </div>
-        </motion.div>
-      )}
+        ) : (
+          /* No Addresses Found */
+          <div className="text-center py-8">
+            <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+              <svg
+                className="w-8 h-8 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
+            </div>
+            <p className="text-gray-600 mb-2">No saved addresses found</p>
+            <p className="text-sm text-gray-500">
+              Add your first delivery address below
+            </p>
+          </div>
+        )}
+      </motion.div>
 
+      {/* Add New Address Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="border border-gray-200 rounded-xl overflow-hidden"
+        className="border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200"
       >
         <div
           onClick={handleAddNewAddress}
-          className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-between p-5 cursor-pointer hover:bg-gray-50 transition-colors group"
         >
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-50 rounded-full flex items-center justify-center group-hover:from-gray-200 group-hover:to-gray-100 transition-all duration-200">
               <svg
                 className="w-5 h-5 text-gray-600"
                 fill="none"
@@ -820,10 +1037,12 @@ export default function UnifiedCheckoutForm({
               </svg>
             </div>
             <div>
-              <p className="font-medium text-gray-900">Add New Address</p>
+              <p className="font-semibold text-gray-900 text-lg">
+                Add New Address
+              </p>
               <p className="text-sm text-gray-500">
                 {savedAddresses.length === 0
-                  ? "No saved addresses found"
+                  ? "Add your delivery address to continue"
                   : "Save address for future orders"}
               </p>
             </div>
@@ -837,12 +1056,13 @@ export default function UnifiedCheckoutForm({
           </div>
         </div>
 
+        {/* Address Form */}
         <div
           ref={contentRef}
           style={{ maxHeight: formHeight }}
           className="overflow-hidden transition-all duration-700 ease-in-out"
         >
-          <div className="border-t border-gray-100 p-6">
+          <div className="border-t border-gray-100 p-6 bg-gray-50/30">
             <form onSubmit={handleAddressFormSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-1">
@@ -857,8 +1077,8 @@ export default function UnifiedCheckoutForm({
                     }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
                       addressErrors.fullName
-                        ? "border-red-500"
-                        : "border-gray-300"
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-300 bg-white"
                     }`}
                     placeholder="Enter your full name"
                   />
@@ -866,8 +1086,19 @@ export default function UnifiedCheckoutForm({
                     <motion.p
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1"
+                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
                     >
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
                       {addressErrors.fullName}
                     </motion.p>
                   )}
@@ -884,7 +1115,9 @@ export default function UnifiedCheckoutForm({
                       handleAddressInputChange("email", e.target.value)
                     }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.email ? "border-red-500" : "border-gray-300"
+                      addressErrors.email
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-300 bg-white"
                     }`}
                     placeholder="Enter your email address"
                   />
@@ -892,8 +1125,19 @@ export default function UnifiedCheckoutForm({
                     <motion.p
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1"
+                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
                     >
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
                       {addressErrors.email}
                     </motion.p>
                   )}
@@ -912,8 +1156,8 @@ export default function UnifiedCheckoutForm({
                   }
                   className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
                     addressErrors.addressLine1
-                      ? "border-red-500"
-                      : "border-gray-300"
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-300 bg-white"
                   }`}
                   placeholder="House number, building name, street"
                 />
@@ -921,8 +1165,19 @@ export default function UnifiedCheckoutForm({
                   <motion.p
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="text-red-600 text-sm mt-1"
+                    className="text-red-600 text-sm mt-1 flex items-center gap-1"
                   >
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
                     {addressErrors.addressLine1}
                   </motion.p>
                 )}
@@ -938,7 +1193,7 @@ export default function UnifiedCheckoutForm({
                   onChange={(e) =>
                     handleAddressInputChange("addressLine2", e.target.value)
                   }
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
+                  className="w-full px-4 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
                   placeholder="Area, locality, sector"
                 />
               </div>
@@ -955,7 +1210,9 @@ export default function UnifiedCheckoutForm({
                       handleAddressInputChange("city", e.target.value)
                     }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.city ? "border-red-500" : "border-gray-300"
+                      addressErrors.city
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-300 bg-white"
                     }`}
                     placeholder="Enter city"
                   />
@@ -963,8 +1220,19 @@ export default function UnifiedCheckoutForm({
                     <motion.p
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1"
+                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
                     >
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
                       {addressErrors.city}
                     </motion.p>
                   )}
@@ -980,7 +1248,9 @@ export default function UnifiedCheckoutForm({
                       handleAddressInputChange("state", e.target.value)
                     }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.state ? "border-red-500" : "border-gray-300"
+                      addressErrors.state
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-300 bg-white"
                     }`}
                   >
                     <option value="">Select State</option>
@@ -994,8 +1264,19 @@ export default function UnifiedCheckoutForm({
                     <motion.p
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1"
+                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
                     >
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
                       {addressErrors.state}
                     </motion.p>
                   )}
@@ -1018,8 +1299,8 @@ export default function UnifiedCheckoutForm({
                     }
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
                       addressErrors.pincode
-                        ? "border-red-500"
-                        : "border-gray-300"
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-300 bg-white"
                     }`}
                     placeholder="123456"
                     maxLength={6}
@@ -1028,8 +1309,19 @@ export default function UnifiedCheckoutForm({
                     <motion.p
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1"
+                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
                     >
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
                       {addressErrors.pincode}
                     </motion.p>
                   )}
@@ -1044,11 +1336,11 @@ export default function UnifiedCheckoutForm({
                     onChange={(e) =>
                       handleAddressInputChange("addressType", e.target.value)
                     }
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
+                    className="w-full px-4 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
                   >
-                    <option value="home">Home</option>
-                    <option value="office">Office</option>
-                    <option value="other">Other</option>
+                    <option value="home">🏠 Home</option>
+                    <option value="office">🏢 Office</option>
+                    <option value="other">📍 Other</option>
                   </select>
                 </div>
               </div>
@@ -1063,7 +1355,7 @@ export default function UnifiedCheckoutForm({
                   onChange={(e) =>
                     handleAddressInputChange("landmark", e.target.value)
                   }
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
+                  className="w-full px-4 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
                   placeholder="Near hospital, mall, etc."
                 />
               </div>
@@ -1410,13 +1702,33 @@ export default function UnifiedCheckoutForm({
       { number: 3, label: "Pay", key: CHECKOUT_STEPS.PAYMENT },
     ];
 
+    const handleStepClick = (stepKey) => {
+      // Only allow backward navigation
+      if (stepKey < currentStep) {
+        if (stepKey === CHECKOUT_STEPS.VERIFICATION) {
+          setPhoneStep("phone");
+          setOtp(["", "", "", "", "", ""]);
+          setPhoneError("");
+          setResendTimer(0);
+        } else if (stepKey === CHECKOUT_STEPS.ADDRESS) {
+          setAddressErrors({});
+        }
+        handleBackToStep(stepKey);
+      }
+    };
+
     return (
-      <div className="flex items-center justify-center space-x-2 md:space-x-4">
+      <div className="flex items-center justify-center space-x-2 lg:space-x-4">
         {steps.map((step, index) => {
           const status = getStepStatus(step.key);
+          const canNavigateBack = step.key < currentStep;
+
           return (
-            <div key={step.key} className="flex items-center">
-              <div className="flex flex-col items-center">
+            <div key={step.key} className="flex items-center cursor-default">
+              <div
+                className="flex flex-col items-center"
+                onClick={() => handleStepClick(step.key)}
+              >
                 <div
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
                     status === "completed"
@@ -1424,6 +1736,10 @@ export default function UnifiedCheckoutForm({
                       : status === "current"
                       ? "bg-gray-900 text-white"
                       : "bg-gray-200 text-gray-400"
+                  } ${
+                    canNavigateBack
+                      ? "cursor-pointer hover:underline hover:text-green-700"
+                      : ""
                   }`}
                 >
                   {status === "completed" ? (
@@ -1443,12 +1759,16 @@ export default function UnifiedCheckoutForm({
                   )}
                 </div>
                 <span
-                  className={`mt-2 text-xs font-medium ${
+                  className={`mt-2 text-xs font-medium transition-colors ${
                     status === "completed"
                       ? "text-green-600"
                       : status === "current"
                       ? "text-gray-900"
                       : "text-gray-400"
+                  } ${
+                    canNavigateBack
+                      ? "cursor-pointer hover:underline hover:text-green-700"
+                      : ""
                   }`}
                 >
                   {step.label}
@@ -1490,15 +1810,13 @@ export default function UnifiedCheckoutForm({
 
   return (
     <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-4xl mx-auto lg:p-6">
+      <div className="max-w-4xl mx-auto lg:p-6 lg:pt-4">
         <div className="lg:bg-white lg:rounded-lg lg:shadow-sm py-4 lg:p-6 lg:mb-6">
           {renderProgressBar()}
         </div>
 
         <div className="lg:bg-white lg:rounded-lg lg:shadow-sm">
-          <div className="p-6">
-            {renderCurrentStep()}
-          </div>
+          <div className="p-6">{renderCurrentStep()}</div>
         </div>
       </div>
     </div>
