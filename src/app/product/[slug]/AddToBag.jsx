@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useCart } from "@/context/CartContext";
+import { useCheckout } from "@/context/CheckoutContext";
+import { useRouter } from "next/navigation";
 import CartDrawerPortal from "@/components/Cart/CartDrawerPortal";
 
 export default function AddToBag({ product }) {
@@ -10,7 +12,9 @@ export default function AddToBag({ product }) {
   const [selectedSize, setSelectedSize] = useState("");
   const [sizeError, setSizeError] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-
+  const { setDirectPurchase } = useCheckout();
+  const router = useRouter();
+  const [buying, setBuying] = useState(false);
   const { addToCart } = useCart();
 
   const handleSizeSelect = (size) => {
@@ -27,6 +31,21 @@ export default function AddToBag({ product }) {
     });
   };
 
+  const handleBuyNow = async () => {
+    if (!selectedSize) {
+      alert("Please select a size");
+      return;
+    }
+
+    setBuying(true);
+
+    // Simple navigation to direct checkout
+    const params = new URLSearchParams({
+      size: selectedSize,
+    });
+    
+    router.push(`/checkout/${product.slug}?${params.toString()}`);
+  };
 
   const handleAddToBag = async () => {
     // Require size
@@ -192,17 +211,22 @@ export default function AddToBag({ product }) {
 
           {/* Buy It Now Button */}
           <button
-            onClick={() => {
-              if (!selectedSize) {
-                handleSizeRequired();
-                return;
-              }
-              // Handle buy now logic
-              console.log("Buy now clicked");
-            }}
-            className="w-full bg-gray-900 text-white py-4 px-6 rounded-md font-semibold text-base hover:bg-gray-800 transition-all duration-300 shadow-2xl transform hover:scale-[1.02] active:scale-[0.98]"
+            onClick={handleBuyNow}
+            disabled={buying || !selectedSize}
+            className={`w-full py-3 px-6 rounded-lg font-medium transition-all ${
+              buying || !selectedSize
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                : "bg-orange-600 hover:bg-orange-700 text-white"
+            }`}
           >
-            Buy It Now
+            {buying ? (
+              <div className="flex items-center justify-center">
+                <div className="rounded-full h-5 w-5 border-2 border-white border-t-transparent animate-spin mr-2" />
+                Processing...
+              </div>
+            ) : (
+              "Buy Now"
+            )}
           </button>
         </div>
 

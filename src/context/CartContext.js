@@ -10,7 +10,8 @@ const cartReducer = (state, action) => {
     case "SET_CART":
       return {
         ...state,
-        items: action.payload || [],
+        items: action.payload?.items || [],
+        appliedCoupon: action.payload?.appliedCoupon || null,
       };
 
     case "ADD_ITEM":
@@ -20,59 +21,82 @@ const cartReducer = (state, action) => {
           item.size === action.payload.size
       );
 
+      let newItems;
       if (existingItemIndex > -1) {
-        const updatedItems = state.items.map((item, index) =>
+        newItems = state.items.map((item, index) =>
           index === existingItemIndex
             ? { ...item, quantity: item.quantity + action.payload.quantity }
             : item
         );
-        return {
-          ...state,
-          items: updatedItems,
-        };
       } else {
-        return {
-          ...state,
-          items: [...state.items, action.payload],
-        };
+        newItems = [...state.items, action.payload];
       }
 
-    case "UPDATE_QUANTITY":
       return {
         ...state,
-        items: state.items.map((item) =>
-          item.productId === action.payload.productId && 
-          item.size === action.payload.size
-            ? { ...item, quantity: action.payload.quantity }
-            : item
-        ).filter(item => item.quantity > 0),
+        items: newItems,
+        // Clear coupon when cart changes - will be revalidated
+        appliedCoupon: null,
+      };
+
+    case "UPDATE_QUANTITY":
+      const updatedItems = state.items.map((item) =>
+        item.productId === action.payload.productId && 
+        item.size === action.payload.size
+          ? { ...item, quantity: action.payload.quantity }
+          : item
+      ).filter(item => item.quantity > 0);
+
+      return {
+        ...state,
+        items: updatedItems,
+        appliedCoupon: updatedItems.length === 0 ? null : state.appliedCoupon,
       };
 
     case "REMOVE_ITEM":
+      const filteredItems = state.items.filter(
+        (item) => 
+          !(item.productId === action.payload.productId && 
+            item.size === action.payload.size)
+      );
+
       return {
         ...state,
-        items: state.items.filter(
-          (item) => 
-            !(item.productId === action.payload.productId && 
-              item.size === action.payload.size)
-        ),
+        items: filteredItems,
+        appliedCoupon: filteredItems.length === 0 ? null : state.appliedCoupon,
       };
 
     case "REMOVE_MULTIPLE_ITEMS":
+      const remainingItems = state.items.filter(item => 
+        !action.payload.some(removeItem => 
+          item.productId === removeItem.productId && 
+          item.size === removeItem.size
+        )
+      );
+      
       return {
         ...state,
-        items: state.items.filter(item => 
-          !action.payload.some(removeItem => 
-            item.productId === removeItem.productId && 
-            item.size === removeItem.size
-          )
-        ),
+        items: remainingItems,
+        appliedCoupon: remainingItems.length === 0 ? null : state.appliedCoupon,
       };
 
     case "CLEAR_CART":
       return {
         ...state,
         items: [],
+        appliedCoupon: null,
+      };
+
+    case "APPLY_COUPON":
+      return {
+        ...state,
+        appliedCoupon: action.payload,
+      };
+
+    case "REMOVE_COUPON":
+      return {
+        ...state,
+        appliedCoupon: null,
       };
 
     case "SET_LOADING":
@@ -81,10 +105,10 @@ const cartReducer = (state, action) => {
         loading: action.payload,
       };
 
-    case "SET_OPERATION_IN_PROGRESS":
+    case "SET_COUPON_LOADING":
       return {
         ...state,
-        operationInProgress: action.payload,
+        couponLoading: action.payload,
       };
 
     default:
@@ -95,8 +119,9 @@ const cartReducer = (state, action) => {
 // Initial state
 const initialState = {
   items: [],
+  appliedCoupon: null,
   loading: false,
-  operationInProgress: false,
+  couponLoading: false,
 };
 
 export function CartProvider({ children }) {
@@ -104,27 +129,50 @@ export function CartProvider({ children }) {
   const { user } = useUser();
   const syncInProgress = useRef(false);
   const initialized = useRef(false);
+  const guestCartId = useRef(null);
   
   // Queue for batch operations
   const operationQueue = useRef([]);
   const isProcessingQueue = useRef(false);
   const queueTimeoutRef = useRef(null);
 
+  // Generate or retrieve guest cart ID for secure tracking
+  useEffect(() => {
+    if (!user) {
+      let storedCartId = localStorage.getItem("guestCartId");
+      if (!storedCartId) {
+        // Generate a secure guest cart ID
+        storedCartId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem("guestCartId", storedCartId);
+      }
+      guestCartId.current = storedCartId;
+    } else {
+      // Clear guest ID when user logs in
+      localStorage.removeItem("guestCartId");
+      guestCartId.current = null;
+    }
+  }, [user]);
+
   // Load cart from localStorage on initial render (for guests)
   useEffect(() => {
     if (!initialized.current && !user) {
       const savedCart = localStorage.getItem("guestCart");
+      
+      let cartData = { items: [] };
+      
       if (savedCart) {
         try {
           const parsedCart = JSON.parse(savedCart);
           if (Array.isArray(parsedCart)) {
-            dispatch({ type: "SET_CART", payload: parsedCart });
+            cartData.items = parsedCart;
           }
         } catch (error) {
           console.error("Error parsing saved cart:", error);
           localStorage.removeItem("guestCart");
         }
       }
+
+      dispatch({ type: "SET_CART", payload: cartData });
       initialized.current = true;
     }
   }, [user]);
@@ -136,20 +184,24 @@ export function CartProvider({ children }) {
     if (user && !syncInProgress.current) {
       syncCartWithDatabase();
     } else if (!user) {
+      // User logged out, load from localStorage
       const savedCart = localStorage.getItem("guestCart");
+      
+      let cartData = { items: [] };
+      
       if (savedCart) {
         try {
           const parsedCart = JSON.parse(savedCart);
           if (Array.isArray(parsedCart)) {
-            dispatch({ type: "SET_CART", payload: parsedCart });
+            cartData.items = parsedCart;
           }
         } catch (error) {
           console.error("Error parsing saved cart:", error);
           localStorage.removeItem("guestCart");
         }
-      } else {
-        dispatch({ type: "SET_CART", payload: [] });
       }
+
+      dispatch({ type: "SET_CART", payload: cartData });
     }
   }, [user]);
 
@@ -164,7 +216,7 @@ export function CartProvider({ children }) {
     }
   }, [state.items, user]);
 
-  // Process operation queue
+  // Process operation queue (for authenticated users)
   const processOperationQueue = async () => {
     if (isProcessingQueue.current || operationQueue.current.length === 0 || !user) {
       return;
@@ -244,7 +296,7 @@ export function CartProvider({ children }) {
     }, 300); // 300ms debounce
   };
 
-  // Add operation to queue
+  // Add operation to queue (for authenticated users)
   const queueOperation = (operation) => {
     if (!user) return;
     
@@ -259,7 +311,38 @@ export function CartProvider({ children }) {
     scheduleQueueProcessing();
   };
 
-  // Existing methods with queue integration...
+  // Load cart from database
+  const loadCartFromDatabase = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await fetch("/api/cart", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const cartData = data.cart || data;
+        console.log(cartData);
+        
+        dispatch({ 
+          type: "SET_CART", 
+          payload: {
+            items: cartData?.items || [],
+            appliedCoupon: cartData?.appliedCoupon || null
+          }
+        });
+      } else {
+        console.error("Failed to load cart from database");
+        dispatch({ type: "SET_CART", payload: { items: [] } });
+      }
+    } catch (error) {
+      console.error("Error loading cart:", error);
+      dispatch({ type: "SET_CART", payload: { items: [] } });
+    }
+  };
+
+  // Sync cart with database
   const syncCartWithDatabase = async () => {
     if (syncInProgress.current) return;
     
@@ -270,6 +353,7 @@ export function CartProvider({ children }) {
       const localItems = state.items;
       
       if (localItems.length > 0) {
+        // Sync local cart with database
         const response = await fetch("/api/cart/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -279,12 +363,22 @@ export function CartProvider({ children }) {
 
         if (response.ok) {
           const data = await response.json();
-          dispatch({ type: "SET_CART", payload: data.cart?.items || [] });
+          const cartData = data.cart || data;
+          dispatch({ 
+            type: "SET_CART", 
+            payload: {
+              items: cartData?.items || [],
+              appliedCoupon: cartData?.appliedCoupon || null
+            }
+          });
+          // Clear localStorage after successful sync
           localStorage.removeItem("guestCart");
         } else {
+          // If sync fails, load from database
           await loadCartFromDatabase();
         }
       } else {
+        // No local items, just load from database
         await loadCartFromDatabase();
       }
     } catch (error) {
@@ -296,32 +390,12 @@ export function CartProvider({ children }) {
     }
   };
 
-  const loadCartFromDatabase = async () => {
-    if (!user) return;
-    
-    try {
-      const response = await fetch("/api/cart", {
-        credentials: "include",
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        dispatch({ type: "SET_CART", payload: data.cart?.items || [] });
-      } else {
-        console.error("Failed to load cart from database");
-        dispatch({ type: "SET_CART", payload: [] });
-      }
-    } catch (error) {
-      console.error("Error loading cart:", error);
-      dispatch({ type: "SET_CART", payload: [] });
-    }
-  };
-
+  // Add to cart
   const addToCart = async (product, size, quantity = 1) => {
     const cartItem = {
       productId: product._id,
       name: product.name,
-      price: product.price,
+      price: product.discountedPrice || product.price, // Use server price
       image: product.images?.[0]?.url || "",
       size: size,
       quantity: quantity,
@@ -330,8 +404,14 @@ export function CartProvider({ children }) {
 
     dispatch({ type: "ADD_ITEM", payload: cartItem });
     queueOperation({ type: 'add', ...cartItem });
+    
+    // If coupon is applied, re-validate it after cart changes
+    if (state.appliedCoupon) {
+      setTimeout(() => revalidateCoupon(), 500);
+    }
   };
 
+  // Update quantity
   const updateQuantity = async (productId, size, quantity) => {
     dispatch({ 
       type: "UPDATE_QUANTITY", 
@@ -344,8 +424,14 @@ export function CartProvider({ children }) {
       size, 
       quantity 
     });
+
+    // If coupon is applied, re-validate it after cart changes
+    if (state.appliedCoupon) {
+      setTimeout(() => revalidateCoupon(), 500);
+    }
   };
 
+  // Remove from cart
   const removeFromCart = async (productId, size) => {
     dispatch({ 
       type: "REMOVE_ITEM", 
@@ -357,19 +443,22 @@ export function CartProvider({ children }) {
       productId, 
       size 
     });
+
+    // If coupon is applied, re-validate it after cart changes
+    if (state.appliedCoupon) {
+      setTimeout(() => revalidateCoupon(), 500);
+    }
   };
 
-  // New method for removing multiple items at once
+  // Remove multiple items
   const removeMultipleFromCart = async (itemsToRemove) => {
     if (!Array.isArray(itemsToRemove) || itemsToRemove.length === 0) return;
     
-    // Update local state immediately
     dispatch({ 
       type: "REMOVE_MULTIPLE_ITEMS", 
       payload: itemsToRemove 
     });
 
-    // Queue all remove operations
     itemsToRemove.forEach(item => {
       queueOperation({
         type: 'remove',
@@ -377,8 +466,14 @@ export function CartProvider({ children }) {
         size: item.size
       });
     });
-  };
 
+    // If coupon is applied, re-validate it after cart changes
+    if (state.appliedCoupon) {
+      setTimeout(() => revalidateCoupon(), 500);
+    }
+  };
+  
+  // Clear cart
   const clearCart = async () => {
     dispatch({ type: "CLEAR_CART" });
     
@@ -397,27 +492,181 @@ export function CartProvider({ children }) {
       } catch (error) {
         console.error("Error clearing database cart:", error);
       }
+    } else {
+      localStorage.removeItem("guestCart");
+      localStorage.removeItem("guestCartId");
     }
   };
 
-  // Calculate totals
-  const totalItems = state.items.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = state.items.reduce(
-    (sum, item) => sum + (item.price * item.quantity),
-    0
-  );
+  // Apply coupon - Secure version with server-side validation
+  const applyCoupon = async (couponCode) => {
+    dispatch({ type: "SET_COUPON_LOADING", payload: true });
+    
+    try {
+      const requestBody = {
+        couponCode: couponCode.trim().toUpperCase(),
+        cartId: guestCartId.current
+      };
+
+      // For guest users, include cart items for server-side validation
+      if (!user) {
+        requestBody.guestCartItems = state.items.map(item => ({
+          productId: item.productId,
+          size: item.size,
+          quantity: item.quantity,
+        }));
+      }
+
+      const response = await fetch("/api/cart/apply-coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to apply coupon");
+      }
+
+      // Apply server-validated coupon data
+      const couponData = {
+        code: data.coupon.code,
+        type: data.coupon.type,
+        value: data.coupon.value,
+        description: data.coupon.description,
+        discountAmount: data.discount.totalDiscount,
+        shippingDiscount: data.discount.shippingDiscount,
+        itemDiscounts: data.discount.itemDiscounts,
+        eligibleItems: data.discount.eligibleItems,
+        isGuest: data.isGuest,
+        trackingId: data.trackingId
+      };
+
+      dispatch({ type: "APPLY_COUPON", payload: couponData });
+
+      return {
+        success: true,
+        message: data.message,
+        discount: data.discount,
+        cartTotals: data.cartTotals
+      };
+    } catch (error) {
+      throw error;
+    } finally {
+      dispatch({ type: "SET_COUPON_LOADING", payload: false });
+    }
+  };
+
+  // Remove coupon
+  const removeCoupon = async () => {
+    dispatch({ type: "SET_COUPON_LOADING", payload: true });
+    
+    try {
+      const response = await fetch("/api/cart/remove-coupon", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ 
+          cartId: guestCartId.current 
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to remove coupon");
+      }
+
+      dispatch({ type: "REMOVE_COUPON" });
+      return data;
+    } catch (error) {
+      throw error;
+    } finally {
+      dispatch({ type: "SET_COUPON_LOADING", payload: false });
+    }
+  };
+
+  // Re-validate coupon after cart changes
+  const revalidateCoupon = async () => {
+    if (!state.appliedCoupon || state.items.length === 0) {
+      if (state.appliedCoupon) {
+        dispatch({ type: "REMOVE_COUPON" });
+      }
+      return;
+    }
+
+    try {
+      // Re-apply the current coupon to get updated discount
+      await applyCoupon(state.appliedCoupon.code);
+    } catch (error) {
+      // If coupon is no longer valid, remove it silently
+      dispatch({ type: "REMOVE_COUPON" });
+    }
+  };
+
+  // Calculate totals with server-validated discounts
+  const calculateTotals = () => {
+    const subtotal = state.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalItems = state.items.reduce((sum, item) => sum + item.quantity, 0);
+    
+    let totalDiscount = 0;
+    let shippingDiscount = 0;
+    let itemDiscounts = {};
+
+    if (state.appliedCoupon) {
+      totalDiscount = state.appliedCoupon.discountAmount || 0;
+      shippingDiscount = state.appliedCoupon.shippingDiscount || 0;
+      itemDiscounts = state.appliedCoupon.itemDiscounts || {};
+    }
+
+    const finalTotal = Math.max(0, subtotal - totalDiscount);
+
+    return {
+      subtotal: Math.round(subtotal * 100) / 100,
+      totalItems,
+      totalDiscount: Math.round(totalDiscount * 100) / 100,
+      shippingDiscount: Math.round(shippingDiscount * 100) / 100,
+      finalTotal: Math.round(finalTotal * 100) / 100,
+      itemDiscounts,
+      savings: Math.round(totalDiscount * 100) / 100
+    };
+  };
+
+  const totals = calculateTotals();
 
   const value = {
+    // State
     items: state.items,
+    appliedCoupon: state.appliedCoupon,
     loading: state.loading,
-    operationInProgress: state.operationInProgress,
-    totalItems,
-    totalPrice,
+    couponLoading: state.couponLoading,
+    
+    // Calculated values
+    totalItems: totals.totalItems,
+    totalPrice: totals.subtotal, // For backward compatibility
+    subtotal: totals.subtotal,
+    totalDiscount: totals.totalDiscount,
+    shippingDiscount: totals.shippingDiscount,
+    finalPrice: totals.finalTotal, // For backward compatibility
+    finalTotal: totals.finalTotal,
+    discountAmount: totals.totalDiscount, // For backward compatibility
+    itemDiscounts: totals.itemDiscounts,
+    savings: totals.savings,
+    
+    // Guest tracking
+    guestCartId: guestCartId.current,
+    
+    // Actions
     addToCart,
     updateQuantity,
     removeFromCart,
-    removeMultipleFromCart, // New method
+    removeMultipleFromCart,
     clearCart,
+    applyCoupon,
+    removeCoupon,
+    revalidateCoupon,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

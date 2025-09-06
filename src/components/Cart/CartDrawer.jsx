@@ -4,21 +4,42 @@ import { useCart } from "@/context/CartContext";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
+// Update CartDrawer.jsx to include coupon section
+import CouponSection from "../Coupon/CouponSection";
+import { useUser } from "@/context/UserContext";
 
 export default function CartDrawer({ isOpen, onClose }) {
   const {
     items,
     totalItems,
     totalPrice,
+    discountAmount,
+    finalPrice,
+    appliedCoupon,
+    couponLoading,
+    applyCoupon,
+    removeCoupon,
     updateQuantity,
     removeFromCart,
     loading,
+    subtotal,
+    totalDiscount,
+    shippingDiscount,
+    finalTotal,
+    itemDiscounts,
   } = useCart();
+
+  const { user } = useUser();
+
   const [isDesktop, setIsDesktop] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const dragControls = useDragControls();
   const constraintsRef = useRef(null);
+  const [showCouponInput, setShowCouponInput] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   // Handle screen size detection
   useEffect(() => {
@@ -31,6 +52,54 @@ export default function CartDrawer({ isOpen, onClose }) {
 
     return () => window.removeEventListener("resize", checkScreenSize);
   }, []);
+
+  const handleInputChange = (e) => {
+    const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    setCouponCode(value);
+    setError("");
+    setSuccess("");
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter" && !couponLoading && couponCode.trim()) {
+      handleApplyCoupon();
+    }
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
+      setError("Please enter a coupon code");
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    try {
+      const result = await applyCoupon(couponCode.trim());
+      setCouponCode("");
+      if (result?.message) {
+        setSuccess(result.message);
+        setTimeout(() => setSuccess(""), 3000);
+      }
+    } catch (err) {
+      setError(err.message || "Failed to apply coupon");
+      setTimeout(() => setError(""), 5000);
+    }
+  };
+
+  const handleRemoveCoupon = async () => {
+    setError("");
+    setSuccess("");
+
+    try {
+      await removeCoupon();
+      setShowCouponInput(true);
+    } catch (err) {
+      setError(err.message || "Failed to remove coupon");
+      setTimeout(() => setError(""), 5000);
+    }
+  };
 
   // Handle escape key and body scroll
   useEffect(() => {
@@ -77,6 +146,19 @@ export default function CartDrawer({ isOpen, onClose }) {
     setIsFullScreen(!isFullScreen);
   };
 
+  // Add helper functions to get item discounts
+  const getItemDiscount = (item) => {
+    if (!itemDiscounts) return 0;
+    const itemKey = `${item.productId}-${item.size}`;
+    return itemDiscounts[itemKey] || 0;
+  };
+
+  const getDiscountedPrice = (item) => {
+    const discount = getItemDiscount(item);
+    const originalTotal = item.price * item.quantity;
+    return originalTotal - discount;
+  };
+
   return (
     <div className="w-full h-full">
       <AnimatePresence mode="wait">
@@ -106,7 +188,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                   !isDesktop && isFullScreen
                     ? "100vh"
                     : !isDesktop
-                    ? "60vh"
+                    ? "65vh"
                     : "100vh",
               }}
               exit={{
@@ -136,7 +218,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                 isDesktop
                   ? "top-0 right-0 h-screen w-full max-w-md"
                   : `top-0 left-0 w-screen rounded-b-2xl ${
-                      isFullScreen ? "h-screen rounded-none" : "h-[60vh]"
+                      isFullScreen ? "h-screen rounded-none" : "h-[65vh]"
                     }`
               }
               ${isDragging ? "cursor-grabbing" : ""}
@@ -156,18 +238,6 @@ export default function CartDrawer({ isOpen, onClose }) {
                   <h2 className="text-xl lg:text-2xl font-bold text-gray-900">
                     Cart
                   </h2>
-                  <AnimatePresence>
-                    {totalItems > 0 && (
-                      <motion.p
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        className="text-sm text-gray-500 mt-1"
-                      >
-                        {totalItems} {totalItems === 1 ? "item" : "items"}
-                      </motion.p>
-                    )}
-                  </AnimatePresence>
                 </div>
                 <button
                   onClick={onClose}
@@ -193,7 +263,7 @@ export default function CartDrawer({ isOpen, onClose }) {
 
               {/* Free Shipping Banner with slide animation */}
               <AnimatePresence>
-                {totalPrice > 0 && (
+                {totalPrice > 500 && (isDesktop || isFullScreen) && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
@@ -297,129 +367,62 @@ export default function CartDrawer({ isOpen, onClose }) {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: 0.2, duration: 0.3 }}
-                      className="p-4 pt-0 lg:p-6 space-y-4"
+                      className="p-4 pt-1 lg:p-6 space-y-4"
                     >
-                      {items.map((item, index) => (
-                        <motion.div
-                          key={`${item.productId}-${item.size}`}
-                          initial={{ opacity: 0, x: 50 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -50, height: 0 }}
-                          transition={{
-                            delay: index * 0.1,
-                            duration: 0.3,
-                            ease: "easeOut",
-                          }}
-                          layout
-                          className="group"
-                        >
-                          <div className="flex gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
-                            {/* Product Image */}
-                            <motion.div
-                              whileHover={{ scale: 1.05 }}
-                              className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-lg overflow-hidden flex-shrink-0 shadow-sm"
-                            >
-                              {item.image ? (
-                                <Image
-                                  src={item.image}
-                                  alt={item.name}
-                                  width={96}
-                                  height={96}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                                  <svg
-                                    className="w-8 h-8 text-gray-400"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                    />
-                                  </svg>
-                                </div>
-                              )}
-                            </motion.div>
+                      {/* Coupon Section */}
+                      <CouponSection
+                        appliedCoupon={appliedCoupon}
+                        showInput={showCouponInput}
+                        setShowInput={setShowCouponInput}
+                        couponCode={couponCode}
+                        handleInputChange={handleInputChange}
+                        handleKeyPress={handleKeyPress}
+                        handleApplyCoupon={handleApplyCoupon}
+                        handleRemoveCoupon={handleRemoveCoupon}
+                        couponLoading={couponLoading}
+                        error={error}
+                        success={success}
+                        user={user}
+                        totalDiscount={totalDiscount}
+                        isMobile={!isDesktop}
+                        className="mb-4"
+                      />
+                      {items.map((item, index) => {
+                        const discount = getItemDiscount(item);
+                        const discountedPrice = getDiscountedPrice(item);
 
-                            {/* Product Details */}
-                            <div className="flex-1 min-w-0">
-                              <Link
-                                href={`/products/${item.slug}`}
-                                className="block hover:text-gray-600 transition-colors"
-                                onClick={onClose}
+                        return (
+                          <motion.div
+                            key={`${item.productId}-${item.size}`}
+                            initial={{ opacity: 0, x: 50 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -50, height: 0 }}
+                            transition={{
+                              delay: index * 0.1,
+                              duration: 0.3,
+                              ease: "easeOut",
+                            }}
+                            layout
+                            className="group"
+                          >
+                            <div className="flex gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                              {/* Product Image */}
+                              <motion.div
+                                whileHover={{ scale: 1.05 }}
+                                className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-lg overflow-hidden flex-shrink-0 shadow-sm"
                               >
-                                <h3 className="font-medium text-gray-900 text-base lg:text-lg leading-tight">
-                                  {item.name}
-                                </h3>
-                              </Link>
-
-                              <div className="flex items-center justify-between mt-2">
-                                <div>
-                                  <p className="text-sm text-gray-500">
-                                    Size: {item.size}
-                                  </p>
-                                  <p className="text-base font-semibold text-gray-900 mt-1">
-                                    ₹{item.price.toFixed(2)}
-                                  </p>
-                                </div>
-
-                                {/* Remove Button */}
-                                <motion.button
-                                  initial={{ opacity: 0, scale: 0.8 }}
-                                  animate={{ opacity: 1, scale: 0.8 }}
-                                  whileHover={{
-                                    opacity: 1,
-                                    scale: 1,
-                                    backgroundColor: "rgb(255, 255, 255)",
-                                  }}
-                                  whileTap={{ scale: 0.9 }}
-                                  onClick={() =>
-                                    removeFromCart(item.productId, item.size)
-                                  }
-                                  className="p-2 rounded-full transition-colors group-hover:opacity-100"
-                                >
-                                  <motion.svg
-                                    whileHover={{ color: "rgb(239, 68, 68)" }}
-                                    className="w-5 h-5 text-gray-400"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                    />
-                                  </motion.svg>
-                                </motion.button>
-                              </div>
-
-                              {/* Quantity Controls */}
-                              <div className="flex items-center justify-between mt-4">
-                                <div className="flex items-center gap-3 bg-white rounded-full p-1 shadow-sm">
-                                  <motion.button
-                                    whileHover={{
-                                      scale: 1.1,
-                                      backgroundColor: "rgb(243, 244, 246)",
-                                    }}
-                                    whileTap={{ scale: 0.9 }}
-                                    onClick={() =>
-                                      handleQuantityChange(
-                                        item.productId,
-                                        item.size,
-                                        item.quantity - 1
-                                      )
-                                    }
-                                    className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
-                                  >
+                                {item.image ? (
+                                  <Image
+                                    src={item.image}
+                                    alt={item.name}
+                                    width={96}
+                                    height={96}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-gray-200 flex items-center justify-center">
                                     <svg
-                                      className="w-4 h-4"
+                                      className="w-8 h-8 text-gray-400"
                                       fill="none"
                                       stroke="currentColor"
                                       viewBox="0 0 24 24"
@@ -428,42 +431,157 @@ export default function CartDrawer({ isOpen, onClose }) {
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                         strokeWidth={2}
-                                        d="M20 12H4"
+                                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                                       />
                                     </svg>
-                                  </motion.button>
-                                  <motion.span
-                                    key={item.quantity}
-                                    initial={{
-                                      scale: 1.2,
-                                      color: "rgb(34, 197, 94)",
-                                    }}
-                                    animate={{
+                                  </div>
+                                )}
+                              </motion.div>
+
+                              {/* Product Details */}
+                              <div className="flex-1 min-w-0 flex justify-between">
+                                {/* LEFT SIDE */}
+                                <div className="flex flex-col justify-between">
+                                  {/* Title */}
+                                  <Link
+                                    href={`/products/${item.slug}`}
+                                    className="block hover:text-gray-600 transition-colors"
+                                    onClick={onClose}
+                                  >
+                                    <h3 className="font-medium text-gray-900 text-base lg:text-lg leading-tight line-clamp-1">
+                                      {item.name}
+                                    </h3>
+                                  </Link>
+
+                                  {/* Size + Quantity Controls */}
+                                  <div>
+                                    <p className="text-sm text-gray-500 mb-2">
+                                      Size: {item.size}
+                                    </p>
+
+                                    {/* Quantity Controls */}
+                                    <div className="flex items-center gap-3 bg-white rounded-full p-1 shadow-sm">
+                                      <motion.button
+                                        whileHover={{
+                                          scale: 1.1,
+                                          backgroundColor: "rgb(243, 244, 246)",
+                                        }}
+                                        whileTap={{ scale: 0.9 }}
+                                        onClick={() =>
+                                          handleQuantityChange(
+                                            item.productId,
+                                            item.size,
+                                            item.quantity - 1
+                                          )
+                                        }
+                                        className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                                      >
+                                        <svg
+                                          className="w-4 h-4"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M20 12H4"
+                                          />
+                                        </svg>
+                                      </motion.button>
+
+                                      <motion.span
+                                        key={item.quantity}
+                                        initial={{
+                                          scale: 1.2,
+                                          color: "rgb(34, 197, 94)",
+                                        }}
+                                        animate={{
+                                          scale: 1,
+                                          color: "rgb(0, 0, 0)",
+                                        }}
+                                        transition={{ duration: 0.2 }}
+                                        className="w-10 text-center text-sm font-medium"
+                                      >
+                                        {item.quantity}
+                                      </motion.span>
+
+                                      <motion.button
+                                        whileHover={{
+                                          scale: 1.1,
+                                          backgroundColor: "rgb(243, 244, 246)",
+                                        }}
+                                        whileTap={{ scale: 0.9 }}
+                                        onClick={() =>
+                                          handleQuantityChange(
+                                            item.productId,
+                                            item.size,
+                                            item.quantity + 1
+                                          )
+                                        }
+                                        className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                                      >
+                                        <svg
+                                          className="w-4 h-4"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                                          />
+                                        </svg>
+                                      </motion.button>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* RIGHT SIDE */}
+                                <div className="flex flex-col items-end justify-between ml-4">
+                                  {/* Price */}
+                                  {discount > 0 ? (
+                                    <div className="flex flex-col items-end">
+                                      <p className="text-sm font-semibold text-green-600">
+                                        ₹{discountedPrice.toFixed(2)}
+                                      </p>
+                                      <p className="text-xs text-gray-500 line-through">
+                                        ₹
+                                        {(item.price * item.quantity).toFixed(
+                                          2
+                                        )}
+                                      </p>
+                                      <p className="text-xs text-green-600">
+                                        -₹{discount.toFixed(2)}
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <p className="text-base font-medium text-gray-900">
+                                      ₹{(item.price * item.quantity).toFixed(2)}
+                                    </p>
+                                  )}
+
+                                  {/* Remove button */}
+                                  <motion.button
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 0.8 }}
+                                    whileHover={{
+                                      opacity: 1,
                                       scale: 1,
-                                      color: "rgb(0, 0, 0)",
-                                    }}
-                                    transition={{ duration: 0.2 }}
-                                    className="w-10 text-center text-sm font-medium"
-                                  >
-                                    {item.quantity}
-                                  </motion.span>
-                                  <motion.button
-                                    whileHover={{
-                                      scale: 1.1,
-                                      backgroundColor: "rgb(243, 244, 246)",
+                                      backgroundColor: "rgb(255, 255, 255)",
                                     }}
                                     whileTap={{ scale: 0.9 }}
                                     onClick={() =>
-                                      handleQuantityChange(
-                                        item.productId,
-                                        item.size,
-                                        item.quantity + 1
-                                      )
+                                      removeFromCart(item.productId, item.size)
                                     }
-                                    className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                                    className="p-2 rounded-full transition-colors mt-2"
                                   >
-                                    <svg
-                                      className="w-4 h-4"
+                                    <motion.svg
+                                      whileHover={{ color: "rgb(239, 68, 68)" }}
+                                      className="w-5 h-5 text-gray-400"
                                       fill="none"
                                       stroke="currentColor"
                                       viewBox="0 0 24 24"
@@ -472,20 +590,16 @@ export default function CartDrawer({ isOpen, onClose }) {
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                         strokeWidth={2}
-                                        d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                                       />
-                                    </svg>
+                                    </motion.svg>
                                   </motion.button>
                                 </div>
-
-                                <p className="text-base font-medium text-gray-900">
-                                  ₹{(item.price * item.quantity).toFixed(2)}
-                                </p>
                               </div>
                             </div>
-                          </div>
-                        </motion.div>
-                      ))}
+                          </motion.div>
+                        );
+                      })}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -495,25 +609,43 @@ export default function CartDrawer({ isOpen, onClose }) {
               <AnimatePresence>
                 {items.length > 0 && (
                   <motion.div
-                    initial={{ opacity: 0, y: isDesktop ? 50 : -50}}
+                    initial={{ opacity: 0, y: isDesktop ? 50 : -50 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: isDesktop ? 50 : -50 }}
                     transition={{ delay: 0.1, duration: 0.4 }}
-                    className="border-t rounded-full border-gray-100 p-4 pb-0 lg:p-6 bg-white flex-shrink-0"
+                    className="border-t rounded-full border-gray-100 p-4 pb-0 pt-1 lg:p-6 bg-white flex-shrink-0"
                   >
+                    {/* Subtotal and Discount */}
+                    <div className="space-y-2 mb-4">
+                      <div className="flex justify-between items-center text-sm text-gray-600">
+                        <span>Subtotal</span>
+                        <span>₹{totalPrice.toFixed(2)}</span>
+                      </div>
+
+                      {discountAmount > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="flex justify-between items-center text-sm text-green-600"
+                        >
+                          <span>Discount ({appliedCoupon?.code})</span>
+                          <span>-₹{discountAmount.toFixed(2)}</span>
+                        </motion.div>
+                      )}
+                    </div>
                     {/* Total */}
                     <div className="flex justify-between items-center mb-4">
                       <span className="text-lg lg:text-xl font-medium text-gray-900">
                         Total
                       </span>
                       <motion.span
-                        key={totalPrice}
+                        key={finalPrice}
                         initial={{ scale: 1.1, color: "rgb(34, 197, 94)" }}
                         animate={{ scale: 1, color: "rgb(17, 24, 39)" }}
                         transition={{ duration: 0.3 }}
                         className="text-xl lg:text-2xl font-bold"
                       >
-                        ₹{totalPrice.toFixed(2)}
+                        ₹{finalPrice.toFixed(2)}
                       </motion.span>
                     </div>
 

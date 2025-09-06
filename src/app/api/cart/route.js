@@ -19,7 +19,7 @@ export async function GET(req) {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-fallback-secret-key");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.userId;
 
     // Find user's cart
@@ -37,7 +37,8 @@ export async function GET(req) {
         cart: {
           items: cart.items || [],
           totalItems: cart.totalItems,
-          totalPrice: cart.totalPrice
+          totalPrice: cart.totalPrice,
+          appliedCoupon: cart.appliedCoupon || null,
         }
       },
       { status: 200 }

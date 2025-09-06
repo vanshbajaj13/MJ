@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCart } from "@/context/CartContext";
 
 const CHECKOUT_STEPS = {
   VERIFICATION: 1,
@@ -77,9 +78,14 @@ export default function UnifiedCheckoutForm({
   onBack,
   mobile = false,
 }) {
+const { appliedCoupon, discountAmount } = useCart();
+
   // Session and initialization state
   const [isInitializing, setIsInitializing] = useState(true);
   const [sessionCheckComplete, setSessionCheckComplete] = useState(false);
+  const [validationLoading, setValidationLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState([]);
+  const [validatedPricing, setValidatedPricing] = useState(null);
 
   // Main checkout state
   const [currentStep, setCurrentStep] = useState(CHECKOUT_STEPS.VERIFICATION);
@@ -185,6 +191,39 @@ export default function UnifiedCheckoutForm({
 
     checkVerificationStatus();
   }, []);
+
+  // Validate cart before proceeding to payment
+  const validateCheckout = async () => {
+    setValidationLoading(true);
+    setValidationErrors([]);
+
+    try {
+      const response = await fetch("/api/checkout/validate", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Validation failed");
+      }
+
+      if (data.hasChanges) {
+        setValidationErrors(data.errors);
+        return false;
+      }
+
+      setValidatedPricing(data.validation);
+      return true;
+    } catch (error) {
+      console.error("Validation error:", error);
+      setValidationErrors([error.message]);
+      return false;
+    } finally {
+      setValidationLoading(false);
+    }
+  };
 
   // Load saved addresses with loading state
   const loadSavedAddresses = async (phoneNumber = verifiedPhone) => {
@@ -499,56 +538,89 @@ export default function UnifiedCheckoutForm({
     }
   };
 
-  // Payment function
+  // Enhanced payment handler with validation
   const handlePayment = async () => {
     setLoading(true);
 
     try {
-      console.log("Processing payment...", {
-        phoneNumber: verifiedPhone,
-        addressData: selectedAddress,
-        items,
-        totalPrice,
-        paymentMethod,
-      });
+      // Final validation before payment
+      const isValid = await validateCheckout();
+      if (!isValid) {
+        setLoading(false);
+        return;
+      }
 
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Use validated pricing for payment
+      const finalAmount = validatedPricing.finalTotal;
 
       const orderData = {
-        phoneNumber: verifiedPhone,
-        customerInfo: {
-          fullName: selectedAddress.fullName,
-          email: selectedAddress.email,
-        },
         shippingAddress: selectedAddress,
-        items,
-        totalAmount: totalPrice,
         paymentMethod,
-        status: "pending",
+        // Server will re-validate everything
       };
 
-      const response = await fetch("/api/orders", {
+      const response = await fetch("/api/orders/create", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(orderData),
       });
 
       if (response.ok) {
         const order = await response.json();
         clearCart();
-        window.location.href = `/order-confirmation?orderId=${order.orderId}`;
+        window.location.href = `/order-confirmation?orderId=${order.order.orderId}`;
       } else {
-        throw new Error("Failed to create order");
+        const error = await response.json();
+        throw new Error(error.message || "Failed to create order");
       }
     } catch (error) {
       console.error("Payment error:", error);
-      alert("Payment failed. Please try again.");
+      alert(`Payment failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
+
+  // Show validation errors if any
+  if (validationErrors.length > 0) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-red-900 mb-4">
+            Cart Validation Issues
+          </h3>
+          <ul className="space-y-2 mb-6">
+            {validationErrors.map((error, index) => (
+              <li key={index} className="text-red-800 flex items-start gap-2">
+                <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                {error}
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-3">
+            <button
+              onClick={() => window.location.href = '/cart'}
+              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Update Cart
+            </button>
+            <button
+              onClick={() => {
+                setValidationErrors([]);
+                setValidatedPricing(null);
+              }}
+              className="border border-red-300 text-red-700 px-6 py-2 rounded-lg hover:bg-red-50 transition-colors"
+            >
+              Continue Anyway
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Navigation functions
   const handleBackToStep = (step) => {
@@ -1482,7 +1554,7 @@ export default function UnifiedCheckoutForm({
   );
 
   // Render payment step
-  const renderPaymentStep = () => (
+   const renderPaymentStep = () => (
     <div className="max-w-2xl mx-auto">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1494,6 +1566,7 @@ export default function UnifiedCheckoutForm({
             Order Summary
           </h3>
 
+          {/* Customer & Address Info */}
           <div className="mb-4 pb-4 border-b border-gray-200">
             <p className="font-medium text-gray-900">
               {selectedAddress.fullName}
@@ -1513,13 +1586,11 @@ export default function UnifiedCheckoutForm({
                 {selectedAddress.city}, {selectedAddress.state} -{" "}
                 {selectedAddress.pincode}
               </p>
-              {selectedAddress.landmark && (
-                <p>Landmark: {selectedAddress.landmark}</p>
-              )}
             </div>
           </div>
 
-          <div className="space-y-3">
+          {/* Items */}
+          <div className="space-y-3 mb-4 pb-4 border-b border-gray-200">
             {items.map((item) => (
               <div
                 key={`${item.productId}-${item.size}`}
@@ -1538,14 +1609,33 @@ export default function UnifiedCheckoutForm({
             ))}
           </div>
 
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex justify-between items-center text-lg font-bold">
-              <span>Total</span>
-              <span>₹{totalPrice.toFixed(2)}</span>
+          {/* Pricing Breakdown */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Subtotal</span>
+              <span className="text-gray-900">₹{(totalPrice + (discountAmount || 0)).toFixed(2)}</span>
+            </div>
+            
+            {appliedCoupon && discountAmount > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Discount ({appliedCoupon.code})</span>
+                <span className="text-green-600">-₹{discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Shipping</span>
+              <span className="text-green-600">Free</span>
+            </div>
+            
+            <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-lg">
+              <span className="text-gray-900">Total</span>
+              <span className="text-gray-900">₹{totalPrice.toFixed(2)}</span>
             </div>
           </div>
         </div>
 
+        {/* Payment Method Selection */}
         <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Payment Method
@@ -1609,6 +1699,7 @@ export default function UnifiedCheckoutForm({
           </div>
         </div>
 
+        {/* Security Notice */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-start">
             <svg
@@ -1632,6 +1723,7 @@ export default function UnifiedCheckoutForm({
           </div>
         </div>
 
+        {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 pt-6">
           <motion.button
             type="button"

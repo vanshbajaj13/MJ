@@ -101,4 +101,4 @@ const productSchema = new mongoose.Schema({
 // Prevent model recompilation
 const Product =
   mongoose.models.Product || mongoose.model("Product", productSchema);
-module.exports = Product;
+export default Product;
