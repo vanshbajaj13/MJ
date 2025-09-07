@@ -100,7 +100,7 @@ export default function CartDrawer({ isOpen, onClose }) {
       setTimeout(() => setError(""), 5000);
     }
   };
-
+  
   // Handle escape key and body scroll
   useEffect(() => {
     const handleEscape = (e) => {

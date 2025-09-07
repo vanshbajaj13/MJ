@@ -3,7 +3,7 @@ import "./globals.css";
 import { UserProvider } from "@/context/UserContext";
 import { CartProvider } from "@/context/CartContext";
 import ClientLayout from "./ClientLayout";
-import { CheckoutProvider } from "@/context/CheckoutContext";
+import { BuyNowProvider } from "@/context/BuyNowContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,9 +28,9 @@ export default function RootLayout({ children }) {
       >
         <UserProvider>
           <CartProvider>
-            <CheckoutProvider>
+            <BuyNowProvider>
               <ClientLayout>{children}</ClientLayout>
-            </CheckoutProvider>
+            </BuyNowProvider>
           </CartProvider>
         </UserProvider>
       </body>

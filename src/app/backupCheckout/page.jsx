@@ -1,79 +1,37 @@
-// app/checkout/[productId]/page.jsx - Updated Buy Now checkout
 "use client";
-import { useEffect, useState } from "react";
-import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCart } from "@/context/CartContext";
 import { useUser } from "@/context/UserContext";
-import { useCheckout } from "@/context/CheckoutContext";
-import DirectCheckoutForm from "@/components/checkout/DirectCheckoutForm";
-import DirectOrderSummary from "@/components/checkout/DirectOrderSummary";
-import { usePathname } from "next/navigation";
+import CheckoutForm from "@/components/checkout/CheckoutForm";
+import OrderSummary from "@/components/checkout/OrderSummary";
 
-export default function DirectCheckoutPage() {
-  const params = useParams();
-  const searchParams = useSearchParams();
+export default function CheckoutPage() {
   const router = useRouter();
+  const {
+    items,
+    totalItems,
+    totalPrice,
+    finalPrice,
+    loading: cartLoading,
+    clearCart,
+  } = useCart();
   const { user, loading: userLoading } = useUser();
-  const { setDirectPurchase, clearCheckout, finalPrice } = useCheckout();
-
-  const pathname = usePathname();
-
-  // URL parameters - productId is actually a slug now
-  const slug = params.productId;
-  const size = searchParams.get('size');
-  const quantity = parseInt(searchParams.get('quantity') || '1');
-
-  // State
-  const [product, setProduct] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [countdown, setCountdown] = useState(10);
 
-  // Fetch product using slug
   useEffect(() => {
-    const fetchProduct = async () => {
-      try {
-        const response = await fetch(`/api/products/${slug}`);
-        if (!response.ok) throw new Error('Product not found');
-        
-        const data = await response.json();
-        
-        if (data.success) {
-          setProduct(data.data);
-        } else {
-          throw new Error(data.error);
-        }
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (slug) {
-      fetchProduct();
-    }
-  }, [slug]);
-
-  // Initialize direct purchase in CheckoutContext when product is loaded
-  useEffect(() => {
-    if (product && size && !loading) {
-      setDirectPurchase(product, size, quantity);
-    }
-  }, [product, size, quantity, loading]);
-
-  // Initialize component
-  useEffect(() => {
-    if (!loading && !userLoading) {
+    if (!cartLoading && !userLoading) {
       setIsInitialized(true);
-      
-      // Redirect if error or missing required params
-      if (error || !product || !size) {
+
+      if (items.length === 0) {
+        // countdown timer
         const interval = setInterval(() => {
           setCountdown((prev) => prev - 1);
         }, 1000);
 
+        // redirect after 10s
         const timer = setTimeout(() => {
           setShouldRedirect(true);
         }, 10000);
@@ -84,66 +42,38 @@ export default function DirectCheckoutPage() {
         };
       }
     }
-  }, [loading, userLoading, error, product, size]);
+  }, [cartLoading, userLoading, items.length]);
 
   // Handle redirect after state is stable
   useEffect(() => {
     if (shouldRedirect && isInitialized) {
-      clearCheckout(); // Clear checkout context before redirect
       router.replace("/");
     }
-  }, [shouldRedirect, isInitialized, router, clearCheckout]);
-
-  // Validate parameters
-  useEffect(() => {
-    if (!loading && product && !size) {
-      clearCheckout(); // Clear checkout context before redirect
-      router.push(`/product/${product.slug}`);
-    }
-  }, [loading, product, size, router, clearCheckout]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-  return () => {
-    if (!pathname.startsWith("/checkout")) {
-      clearCheckout();
-    }
-  };
-}, [clearCheckout, pathname]);
+  }, [shouldRedirect, isInitialized, router]);
 
   // Show loading state while contexts are initializing
-  if (!isInitialized || loading || userLoading) {
-    return <DirectCheckoutLoadingState />;
+  if (!isInitialized || cartLoading || userLoading) {
+    return <CheckoutLoadingState />;
   }
 
-  // Show error state after everything has loaded
-  if (error || !product || !size) {
+  // Show empty cart state after everything has loaded
+  if (items.length === 0) {
     return (
-      <DirectCheckoutErrorState 
-        error={error}
+      <EmptyCartState
         countdown={countdown}
-        onContinueShopping={() => {
-          clearCheckout();
-          router.push("/");
-        }}
+        onContinueShopping={() => router.push("/")}
       />
     );
   }
 
   const handleBack = () => {
-    clearCheckout();
-    router.push(`/products/${product.slug}`);
-  };
-
-  const handleOrderComplete = () => {
-    clearCheckout();
-    // Order completion logic handled in DirectCheckoutForm
+    router.back();
   };
 
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="bg-white rounded-lg shadow-sm p-4 px-6 flex justify-between">
+      <div className="bg-white rounded-lg shadow-sm px-4 pt-2 lg:p-4 lg:px-6 flex justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
         <button
           onClick={handleBack}
@@ -164,20 +94,25 @@ export default function DirectCheckoutPage() {
           </svg>
         </button>
       </div>
-
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Order Summary - Uses CheckoutContext */}
-        <div className="order-0 lg:block lg:w-96 flex-shrink-0 lg:p-6 rounded-b-2xl">
-          <DirectOrderSummary />
+        {/* Order Summary - fixed position, no scrolling */}
+        <div className="order-0 lg:ml-10 lg:block lg:w-96 flex-shrink-0 lg:p-6 lg:pr-0 rounded-b-2xl lg:max-h-[85vh]">
+          <OrderSummary
+            items={items}
+            totalPrice={totalPrice}
+            totalItems={totalItems}
+          />
         </div>
 
         {/* Checkout Form */}
         <div className="flex-1 overflow-auto lg:p-6 lg:pt-0 scrollbar-hide">
-          <DirectCheckoutForm
+          <CheckoutForm
+            items={items}
+            totalPrice={finalPrice}
             user={user}
+            clearCart={clearCart}
             onBack={handleBack}
-            onComplete={handleOrderComplete}
           />
         </div>
       </div>
@@ -185,8 +120,8 @@ export default function DirectCheckoutPage() {
   );
 }
 
-// Professional loading state component for direct checkout
-function DirectCheckoutLoadingState() {
+// Professional loading state component
+function CheckoutLoadingState() {
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex flex-col">
       {/* Mobile Loading */}
@@ -255,14 +190,18 @@ function DirectCheckoutLoadingState() {
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="w-32 h-6 bg-gray-200 rounded animate-pulse mb-6" />
 
-            {/* Item Skeleton */}
-            <div className="flex gap-3 mb-6">
-              <div className="w-16 h-16 bg-gray-200 rounded animate-pulse" />
-              <div className="flex-1 space-y-2">
-                <div className="w-full h-4 bg-gray-200 rounded animate-pulse" />
-                <div className="w-3/4 h-3 bg-gray-200 rounded animate-pulse" />
-                <div className="w-1/2 h-4 bg-gray-200 rounded animate-pulse" />
-              </div>
+            {/* Items Skeleton */}
+            <div className="space-y-4 mb-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-3">
+                  <div className="w-16 h-16 bg-gray-200 rounded animate-pulse" />
+                  <div className="flex-1 space-y-2">
+                    <div className="w-full h-4 bg-gray-200 rounded animate-pulse" />
+                    <div className="w-3/4 h-3 bg-gray-200 rounded animate-pulse" />
+                    <div className="w-1/2 h-4 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Price Skeleton */}
@@ -295,14 +234,14 @@ function DirectCheckoutLoadingState() {
   );
 }
 
-function DirectCheckoutErrorState({ error, countdown, onContinueShopping }) {
+function EmptyCartState({ onContinueShopping, countdown }) {
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-        {/* Error Icon */}
-        <div className="w-24 h-24 mx-auto mb-6 bg-red-100 rounded-full flex items-center justify-center">
+        {/* Empty Cart Icon */}
+        <div className="w-24 h-24 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
           <svg
-            className="w-12 h-12 text-red-500"
+            className="w-12 h-12 text-gray-400"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -311,17 +250,18 @@ function DirectCheckoutErrorState({ error, countdown, onContinueShopping }) {
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={1.5}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              d="M16 11V7a4 4 0 00-8 0v4M5 9h14l-1 12H6L5 9z"
             />
           </svg>
         </div>
 
         {/* Content */}
         <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          {error ? "Checkout Error" : "Product Not Found"}
+          Your cart is empty
         </h2>
         <p className="text-gray-600 mb-4">
-          {error || "The product you're trying to checkout is not available."}
+          Looks like you haven't added any items to your cart yet. Start
+          shopping to fill it up!
         </p>
 
         {/* Countdown message */}
@@ -349,7 +289,7 @@ function DirectCheckoutErrorState({ error, countdown, onContinueShopping }) {
           </button>
         </div>
 
-        {/* Support link */}
+        {/* Optional: Recent items or suggestions */}
         <div className="mt-8 pt-6 border-t border-gray-100">
           <p className="text-sm text-gray-500">
             Need help?{" "}

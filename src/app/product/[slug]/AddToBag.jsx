@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useCart } from "@/context/CartContext";
-import { useCheckout } from "@/context/CheckoutContext";
 import { useRouter } from "next/navigation";
+import { useBuyNow } from "@/context/BuyNowContext";
+import { motion } from "framer-motion";
 import CartDrawerPortal from "@/components/Cart/CartDrawerPortal";
 
 export default function AddToBag({ product }) {
@@ -12,14 +13,15 @@ export default function AddToBag({ product }) {
   const [selectedSize, setSelectedSize] = useState("");
   const [sizeError, setSizeError] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const { setDirectPurchase } = useCheckout();
   const router = useRouter();
-  const [buying, setBuying] = useState(false);
+  const { createBuyNowSession, loading: buyNowLoading } = useBuyNow();
   const { addToCart } = useCart();
+  const [buyNowError, setBuyNowError] = useState("");
 
   const handleSizeSelect = (size) => {
     setSelectedSize(size);
     setSizeError(false);
+    setBuyNowError("");
   };
 
   const handleSizeRequired = () => {
@@ -33,18 +35,25 @@ export default function AddToBag({ product }) {
 
   const handleBuyNow = async () => {
     if (!selectedSize) {
-      alert("Please select a size");
+      setBuyNowError("Please select a size");
+      setTimeout(() => setBuyNowError(""), 3000);
+      handleSizeRequired();
       return;
     }
 
-    setBuying(true);
+    try {
+      // Create buy now session
+      const result = await createBuyNowSession(product._id, selectedSize, 1);
 
-    // Simple navigation to direct checkout
-    const params = new URLSearchParams({
-      size: selectedSize,
-    });
-    
-    router.push(`/checkout/${product.slug}?${params.toString()}`);
+      if (result.success) {
+        // Navigate to checkout with buy now mode
+        router.push(`/checkout?mode=buy_now&session=${result.sessionId}`);
+      }
+    } catch (error) {
+      console.error("Buy now error:", error);
+      setBuyNowError(error.message || "Unable to proceed. Please try again.");
+      setTimeout(() => setBuyNowError(""), 5000);
+    }
   };
 
   const handleAddToBag = async () => {
@@ -57,7 +66,6 @@ export default function AddToBag({ product }) {
     if (isAdding || isAdded) return;
 
     setIsAdding(true);
-
     try {
       // Add product to cart
       await addToCart(product, selectedSize, 1);
@@ -76,9 +84,6 @@ export default function AddToBag({ product }) {
     } catch (error) {
       console.error("Error adding to bag:", error);
       setIsAdding(false);
-
-      // Optionally show an error message
-      // You could add an error state here
     }
   };
 
@@ -101,36 +106,71 @@ export default function AddToBag({ product }) {
             </button>
           </div>
 
-          {sizeError && (
+          {(sizeError || buyNowError) && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg animate-shake">
               <p className="text-red-600 text-sm font-medium">
-                Please select a size before adding to cart
+                {buyNowError || "Please select a size"}
               </p>
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2">
-            {product.sizes.map((s) => (
-              <button
-                key={s.size._id}
-                onClick={() => handleSizeSelect(s.size.name)}
-                className={`
-                  px-4 py-3 text-sm font-medium rounded-lg border-2 transition-all duration-200
-                  ${
-                    selectedSize === s.size.name
-                      ? "border-gray-900 bg-gray-900 text-white shadow-md transform scale-95"
-                      : sizeError
-                      ? "border-red-300 hover:border-red-400 focus:ring-red-500 text-gray-700 animate-pulse"
-                      : "border-gray-200 hover:border-gray-300 focus:ring-gray-500 text-gray-700 hover:bg-gray-50"
-                  }
-                  focus:outline-none focus:ring-2 focus:ring-offset-2
-                  min-w-[3rem] text-center
-                `}
-              >
-                {s.size.name}
-              </button>
-            ))}
+          {/* Size Selector with General Stock Alert */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {product.sizes.map((s) => {
+              const stock = s.availableQty || 0;
+              const isOutOfStock = stock === 0;
+
+              return (
+                <div className="relative" key={s.size._id}>
+                  <button
+                    onClick={() =>
+                      !isOutOfStock && handleSizeSelect(s.size.name)
+                    }
+                    disabled={isOutOfStock}
+                    className={`
+          px-4 py-3 text-sm font-medium rounded-lg border-2 transition-all duration-200
+          relative
+          ${
+            selectedSize === s.size.name
+              ? "border-gray-900 bg-gray-900 text-white shadow-md transform scale-95"
+              : isOutOfStock
+              ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed opacity-60"
+              : sizeError || buyNowError
+              ? "border-red-300 hover:border-red-400 focus:ring-red-500 text-gray-700 animate-pulse"
+              : "border-gray-200 hover:border-gray-300  text-gray-700 hover:bg-gray-50"
+          }
+          focus:outline-none focus:ring-0
+          min-w-[3rem] text-center
+          ${isOutOfStock ? "line-through" : ""}
+        `}
+                  >
+                    {s.size.name}
+                  </button>
+                  {/* Stock indicator */}
+                  {isOutOfStock && (
+                    <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                      <span className="text-xs text-red-500 px-2 py-1 rounded-full">
+                        Out
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
+
+          {/* General Stock Alert */}
+          {product.sizes.some(
+            (s) => (s.availableQty || 0) > 0 && (s.availableQty || 0) < 5
+          ) && (
+            <div className="">
+              <div className="flex items-center gap-2">
+                <p className="text-red-500 text-sm font-medium">
+                  Hurry, only few left!
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Add to Cart Button */}
@@ -152,7 +192,7 @@ export default function AddToBag({ product }) {
               shadow-xl transform hover:scale-[1.02] active:scale-[0.98]
             `}
           >
-            {/* Cart icon animation */}
+            {/* Cart icon animation - FIXED */}
             {isAdding && (
               <div className="absolute left-6 top-1/2 transform -translate-y-1/2">
                 <div className="relative">
@@ -161,12 +201,12 @@ export default function AddToBag({ product }) {
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
+                    strokeWidth={2}
                   >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M16 11V7a4 4 0 00-8 0v4M5 9h14l-1 12H6L5 9z"
+                      d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119.993z"
                     />
                   </svg>
                   <div className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping"></div>
@@ -176,15 +216,16 @@ export default function AddToBag({ product }) {
 
             {/* Success checkmark with bounce */}
             {isAdded && (
-              <div className="absolute left-6 top-1/2 transform -translate-y-1/2 animate-bounce">
+              <div className="absolute right-6 top-1/2 transform -translate-y-1/2 animate-bounce">
                 <svg
                   className="w-5 h-5"
                   fill="currentColor"
                   viewBox="0 0 20 20"
+                  xmlns="http://www.w3.org/2000/svg"
                 >
                   <path
                     fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
                     clipRule="evenodd"
                   />
                 </svg>
@@ -197,10 +238,10 @@ export default function AddToBag({ product }) {
               } ${isAdded ? "animate-pulse" : ""}`}
             >
               {isAdded
-                ? "Added to Cart!"
+                ? "Added to Bag!"
                 : isAdding
                 ? "Adding..."
-                : "Add to Cart"}
+                : "Add to Bag"}
             </span>
 
             {/* Background animation for success */}
@@ -209,23 +250,41 @@ export default function AddToBag({ product }) {
             )}
           </button>
 
-          {/* Buy It Now Button */}
+          {/* Buy It Now Button - IMPROVED */}
           <button
             onClick={handleBuyNow}
-            disabled={buying || !selectedSize}
-            className={`w-full py-3 px-6 rounded-lg font-medium transition-all ${
-              buying || !selectedSize
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                : "bg-orange-600 hover:bg-orange-700 text-white"
-            }`}
+            disabled={buyNowLoading}
+            className={`
+              w-full py-4 px-6 rounded-md font-semibold text-base transition-all duration-300
+              relative overflow-hidden group
+              ${
+                buyNowLoading
+                  ? "bg-gray-400 text-white cursor-wait"
+                  : "bg-gray-900 text-white hover:bg-black"
+              }
+              shadow-xl transform hover:scale-[1.02] active:scale-[0.98] 
+            `}
           >
-            {buying ? (
-              <div className="flex items-center justify-center">
-                <div className="rounded-full h-5 w-5 border-2 border-white border-t-transparent animate-spin mr-2" />
-                Processing...
+            {/* icon animation */}
+            {buyNowLoading && (
+              <div className="absolute left-6 top-1/2 transform -translate-y-1/2">
+                <div className="relative">
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-400 rounded-full animate-ping"></div>
+                </div>
               </div>
-            ) : (
-              "Buy Now"
+            )}
+
+            <span
+              className={`transition-all duration-300 ${
+                buyNowLoading ? "ml-8" : ""
+              } flex items-center justify-center gap-2`}
+            >
+              {buyNowLoading ? "Processing..." : <span>Buy Now</span>}
+            </span>
+
+            {/* Shimmer effect for enabled state */}
+            {!buyNowLoading && (
+              <div className="absolute inset-0 -top-2 -bottom-2 bg-gradient-to-r from-transparent via-white to-transparent opacity-20 transform -skew-x-12 transition-transform duration-1000 hover:translate-x-full" />
             )}
           </button>
         </div>
@@ -253,6 +312,10 @@ export default function AddToBag({ product }) {
 
           .animate-shake {
             animation: shake 0.5s ease-in-out;
+          }
+           /* Add margin bottom to size selector when stock indicators are present */
+          #size-selector .flex.flex-wrap.gap-2 {
+            margin-bottom: 1.5rem;
           }
         `}</style>
       </div>
