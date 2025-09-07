@@ -50,7 +50,7 @@ export default function CouponSection({
       </AnimatePresence>
 
       <AnimatePresence mode="wait">
-        {appliedCoupon && appliedCoupon.couponId ? (
+        {appliedCoupon && appliedCoupon.code ? (
           /* Applied Coupon Display */
           <motion.div
             key="applied"
