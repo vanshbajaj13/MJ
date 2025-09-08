@@ -151,6 +151,7 @@ export class CouponValidator {
 
     // Calculate discount based on coupon type
     let discountAmount = 0;
+    let shippingDiscount = 0;
     
     switch (coupon.type) {
       case 'percentage':
@@ -166,7 +167,7 @@ export class CouponValidator {
         
       case 'shipping':
         // For shipping discounts, apply as flat reduction up to eligible total
-        discountAmount = Math.min(coupon.value, eligibleTotal);
+        shippingDiscount = coupon.value;
         break;
         
       default:
@@ -185,6 +186,7 @@ export class CouponValidator {
       eligibleTotal: Math.round(eligibleTotal * 100) / 100,
       finalTotal: Math.round((cartTotal - discountAmount) * 100) / 100,
       itemDiscounts,
+      shippingDiscount:shippingDiscount,
       eligibleItems: eligibleItems.map(item => ({
         productId: item.product._id,
         size: item.size,

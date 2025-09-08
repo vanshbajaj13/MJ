@@ -14,6 +14,7 @@ export default function UnifiedOrderSummary({
   removeCoupon,
   subtotal,
   totalDiscount,
+  shippingDiscount,
   finalTotal,
   itemDiscounts,
   totalItems,
@@ -193,6 +194,7 @@ export default function UnifiedOrderSummary({
               user={user}
               subtotal={subtotal}
               totalDiscount={totalDiscount}
+              shippingDiscount={shippingDiscount}
               finalTotal={finalTotal}
               mode={mode}
             />
@@ -275,6 +277,7 @@ export default function UnifiedOrderSummary({
           subtotal={subtotal}
           appliedCoupon={appliedCoupon}
           totalDiscount={totalDiscount}
+          shippingDiscount={shippingDiscount}
           finalTotal={finalTotal}
         />
       </div>
@@ -300,6 +303,7 @@ function MobileContent({
   user,
   subtotal,
   totalDiscount,
+  shippingDiscount,
   finalTotal,
   mode,
 }) {
@@ -380,6 +384,7 @@ function MobileContent({
         subtotal={subtotal}
         appliedCoupon={appliedCoupon}
         totalDiscount={totalDiscount}
+        shippingDiscount={shippingDiscount}
         finalTotal={finalTotal}
         mode={mode}
         isMobile={true}
@@ -463,6 +468,7 @@ function PriceBreakdown({
   subtotal,
   appliedCoupon,
   totalDiscount,
+  shippingDiscount,
   finalTotal,
   mode,
   isMobile = false,
@@ -509,13 +515,20 @@ function PriceBreakdown({
 
         <div className="flex justify-between text-sm">
           <span className="text-gray-600">Shipping</span>
+          {shippingDiscount > 0 ?
           <span className="text-green-600">Free</span>
+          :
+            finalTotal < 500 ? 
+          <span className="text-gray-900">₹50</span>
+          :
+          <span className="text-green-600">Free</span>
+          }
         </div>
 
-        <div className="flex justify-between text-sm">
+        {/* <div className="flex justify-between text-sm">
           <span className="text-gray-600">Tax</span>
           <span className="text-gray-900">₹0.00</span>
-        </div>
+        </div> */}
 
         <div
           className={`border-t pt-2 flex justify-between font-bold ${

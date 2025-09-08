@@ -78,7 +78,7 @@ export function BuyNowProvider({ children }) {
     if (state.isActive && state.expiresAt) {
       const expiryTime = new Date(state.expiresAt).getTime();
       const currentTime = Date.now();
-      
+
       if (currentTime >= expiryTime) {
         dispatch({ type: "CLEAR_SESSION" });
         return;
@@ -125,9 +125,8 @@ export function BuyNowProvider({ children }) {
 
       return {
         success: true,
-        session: sessionData
+        session: sessionData,
       };
-
     } catch (error) {
       dispatch({ type: "CLEAR_SESSION" });
       throw error;
@@ -171,9 +170,8 @@ export function BuyNowProvider({ children }) {
       return {
         success: true,
         sessionId: data.sessionId,
-        session: sessionData
+        session: sessionData,
       };
-
     } catch (error) {
       throw error;
     } finally {
@@ -224,9 +222,8 @@ export function BuyNowProvider({ children }) {
         success: true,
         message: data.message,
         discount: data.discount,
-        totals: data.totals
+        totals: data.totals,
       };
-
     } catch (error) {
       throw error;
     } finally {
@@ -258,7 +255,6 @@ export function BuyNowProvider({ children }) {
 
       dispatch({ type: "REMOVE_COUPON" });
       return data;
-
     } catch (error) {
       throw error;
     } finally {
@@ -267,29 +263,35 @@ export function BuyNowProvider({ children }) {
   };
 
   // Clear session manually (both client and server)
-const clearSession = async (closeOnServer = true) => {
-  // Always clear client state immediately
-  dispatch({ type: "CLEAR_SESSION" });
-  
-  // Optionally close session on server
-  if (closeOnServer && state.sessionId) {
-    try {
-      await fetch(`/api/checkout-session/${state.sessionId}/close`, {
-        method: 'POST',
-        credentials: 'include'
-      });
-    } catch (error) {
-      console.error('Error closing session on server:', error);
-      // Don't throw - client state is already cleared
+  const clearSession = async (closeOnServer = true) => {
+    // Always clear client state immediately
+    dispatch({ type: "CLEAR_SESSION" });
+
+    // Optionally close session on server
+    if (closeOnServer && state.sessionId) {
+      try {
+        await fetch(`/api/checkout-session/${state.sessionId}/close`, {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch (error) {
+        console.error("Error closing session on server:", error);
+        // Don't throw - client state is already cleared
+      }
     }
-  }
-};
+  };
 
   // Calculate totals (same as cart for consistency)
   const calculateTotals = () => {
-    const subtotal = state.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const totalItems = state.items.reduce((sum, item) => sum + item.quantity, 0);
-    
+    const subtotal = state.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+    const totalItems = state.items.reduce(
+      (sum, item) => sum + item.quantity,
+      0
+    );
+
     let totalDiscount = 0;
     let shippingDiscount = 0;
     let itemDiscounts = {};
@@ -300,7 +302,21 @@ const clearSession = async (closeOnServer = true) => {
       itemDiscounts = state.appliedCoupon.itemDiscounts || {};
     }
 
-    const finalTotal = Math.max(0, subtotal - totalDiscount);
+    const shippingCost = 50; 
+    const freeShippingThreshold = 500;
+
+    let finalShippingCost = 0;
+
+    if (subtotal > freeShippingThreshold) {
+      finalShippingCost = 0;
+    } else {
+      finalShippingCost = shippingCost - (shippingDiscount || 0);
+    }
+
+    const finalTotal = Math.max(
+      0,
+      subtotal - totalDiscount + finalShippingCost
+    );
 
     return {
       subtotal: Math.round(subtotal * 100) / 100,
@@ -309,7 +325,7 @@ const clearSession = async (closeOnServer = true) => {
       shippingDiscount: Math.round(shippingDiscount * 100) / 100,
       finalTotal: Math.round(finalTotal * 100) / 100,
       itemDiscounts,
-      savings: Math.round(totalDiscount * 100) / 100
+      savings: Math.round(totalDiscount * 100) / 100,
     };
   };
 
@@ -348,7 +364,9 @@ const clearSession = async (closeOnServer = true) => {
     clearSession,
   };
 
-  return <BuyNowContext.Provider value={value}>{children}</BuyNowContext.Provider>;
+  return (
+    <BuyNowContext.Provider value={value}>{children}</BuyNowContext.Provider>
+  );
 }
 
 export const useBuyNow = () => {

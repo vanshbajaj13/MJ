@@ -57,9 +57,9 @@ export async function POST(request) {
     };
 
     // Calculate discounted price
-    const discountedPrice = product.discount > 0 
-      ? product.price * (1 - product.discount / 100)
-      : product.price;
+    // const discountedPrice = product.discount > 0 
+    //   ? product.price * (1 - product.discount / 100)
+    //   : product.price;
 
     // Create checkout session
     const session = await CheckoutSession.createBuyNowSession({
@@ -67,7 +67,7 @@ export async function POST(request) {
       productData: {
         name: product.name,
         price: product.price,
-        discountedPrice: discountedPrice,
+        discountedPrice: product.price,
         images: product.images,
         slug: product.slug
       },

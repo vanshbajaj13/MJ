@@ -159,7 +159,7 @@ couponUsageSchema.statics.recordApplication = async function(data) {
 couponUsageSchema.statics.checkUsageLimit = async function(couponId, userId, guestTrackingId, userLimit = 1) {
   const query = {
     couponId,
-    status: { $in: ['applied', 'used'] },
+    status: { $in: ['used'] },
     $or: []
   };
 

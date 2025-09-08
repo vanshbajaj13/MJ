@@ -42,6 +42,7 @@ export default function UnifiedCheckoutPage() {
     removeCoupon: buyNowRemoveCoupon,
     subtotal: buyNowSubtotal,
     totalDiscount: buyNowTotalDiscount,
+    shippingDiscount:buynowShippingDiscount,
     finalTotal: buyNowFinalTotal,
     itemDiscounts: buyNowItemDiscounts,
     isActive: buyNowIsActive,
@@ -161,7 +162,7 @@ export default function UnifiedCheckoutPage() {
   // Get active context data
   const getActiveContext = () => {
     if (checkoutMode === "buy_now") {
-      // console.log(buyNowAppliedCoupon);
+      // console.log(buynowShippingDiscount);
 
       return {
         items: buyNowItems,
@@ -172,6 +173,7 @@ export default function UnifiedCheckoutPage() {
         removeCoupon: buyNowRemoveCoupon,
         subtotal: buyNowSubtotal,
         totalDiscount: buyNowTotalDiscount,
+        shippingDiscount:buynowShippingDiscount,
         finalTotal: buyNowFinalTotal,
         itemDiscounts: buyNowItemDiscounts,
         clearItems: clearSession,
@@ -199,23 +201,23 @@ export default function UnifiedCheckoutPage() {
 
   const activeContext = getActiveContext();
 
-  useEffect(() => {
-  const handlePopState = (event) => {
-    event.preventDefault();
-    setShowExitConfirmation(true);
-    // Push the current URL back so user stays on checkout until they confirm
-    window.history.pushState(null, "", window.location.href);
-  };
+//   useEffect(() => {
+//   const handlePopState = (event) => {
+//     event.preventDefault();
+//     setShowExitConfirmation(true);
+//     // Push the current URL back so user stays on checkout until they confirm
+//     window.history.pushState(null, "", window.location.href);
+//   };
 
-  window.addEventListener("popstate", handlePopState);
+//   window.addEventListener("popstate", handlePopState);
 
-  // Prevent initial back nav
-  window.history.pushState(null, "", window.location.href);
+//   // Prevent initial back nav
+//   window.history.pushState(null, "", window.location.href);
 
-  return () => {
-    window.removeEventListener("popstate", handlePopState);
-  };
-}, []);
+//   return () => {
+//     window.removeEventListener("popstate", handlePopState);
+//   };
+// }, []);
 
 
   const handleBack = () => {
@@ -336,6 +338,7 @@ export default function UnifiedCheckoutPage() {
             removeCoupon={activeContext.removeCoupon}
             subtotal={activeContext.subtotal}
             totalDiscount={activeContext.totalDiscount}
+            shippingDiscount={activeContext.shippingDiscount}
             finalTotal={activeContext.finalTotal}
             itemDiscounts={activeContext.itemDiscounts}
             totalItems={activeContext.totalItems}

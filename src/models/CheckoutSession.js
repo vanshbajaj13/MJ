@@ -44,30 +44,30 @@ const checkoutSessionSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
-    
+
     // User context
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
       default: null, // null for guests
     },
-    
+
     // Guest tracking
     guestTrackingId: {
       type: String,
       default: null,
     },
-    
+
     // Session type: 'buy_now' or 'cart_checkout'
     type: {
       type: String,
-      enum: ['buy_now', 'cart_checkout'],
-      default: 'buy_now',
+      enum: ["buy_now", "cart_checkout"],
+      default: "buy_now",
     },
-    
+
     // Items in this checkout session
     items: [checkoutItemSchema],
-    
+
     // Applied coupon (reuse existing structure)
     appliedCoupon: {
       couponId: {
@@ -82,7 +82,7 @@ const checkoutSessionSchema = new mongoose.Schema(
       },
       type: {
         type: String,
-        enum: ['percentage', 'fixed', 'shipping'],
+        enum: ["percentage", "fixed", "shipping"],
         default: null,
       },
       value: {
@@ -91,7 +91,7 @@ const checkoutSessionSchema = new mongoose.Schema(
       },
       description: {
         type: String,
-        default: '',
+        default: "",
       },
       discountAmount: {
         type: Number,
@@ -107,34 +107,36 @@ const checkoutSessionSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.Mixed,
         default: {},
       },
-      eligibleItems: [{
-        productId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Product",
-          required: true,
+      eligibleItems: [
+        {
+          productId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Product",
+            required: true,
+          },
+          size: String,
+          quantity: Number,
+          originalPrice: Number,
+          discount: Number,
         },
-        size: String,
-        quantity: Number,
-        originalPrice: Number,
-        discount: Number,
-      }],
+      ],
       appliedAt: {
         type: Date,
         default: Date.now,
       },
     },
-    
+
     // Session metadata
     ipAddress: String,
     userAgent: String,
-    
+
     // Status
     status: {
       type: String,
-      enum: ['active', 'completed', 'expired', 'cancelled'],
-      default: 'active',
+      enum: ["active", "completed", "expired", "cancelled"],
+      default: "active",
     },
-    
+
     // Expiry - sessions expire after 30 minutes
     expiresAt: {
       type: Date,
@@ -148,12 +150,12 @@ const checkoutSessionSchema = new mongoose.Schema(
 );
 
 // Generate session ID
-checkoutSessionSchema.statics.generateSessionId = function() {
+checkoutSessionSchema.statics.generateSessionId = function () {
   return `cs_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
 };
 
 // Create Buy Now session
-checkoutSessionSchema.statics.createBuyNowSession = async function(data) {
+checkoutSessionSchema.statics.createBuyNowSession = async function (data) {
   const {
     productId,
     productData,
@@ -162,25 +164,27 @@ checkoutSessionSchema.statics.createBuyNowSession = async function(data) {
     userId = null,
     guestTrackingId = null,
     ipAddress = null,
-    userAgent = null
+    userAgent = null,
   } = data;
 
   const sessionId = this.generateSessionId();
-  
+
   const session = await this.create({
     sessionId,
     userId,
     guestTrackingId,
-    type: 'buy_now',
-    items: [{
-      productId,
-      name: productData.name,
-      price: productData.discountedPrice || productData.price,
-      image: productData.images?.[0]?.url || "",
-      size,
-      quantity,
-      slug: productData.slug,
-    }],
+    type: "buy_now",
+    items: [
+      {
+        productId,
+        name: productData.name,
+        price: productData.discountedPrice || productData.price,
+        image: productData.images?.[0]?.url || "",
+        size,
+        quantity,
+        slug: productData.slug,
+      },
+    ],
     ipAddress,
     userAgent,
   });
@@ -189,13 +193,15 @@ checkoutSessionSchema.statics.createBuyNowSession = async function(data) {
 };
 
 // Calculate session totals (reuse cart logic)
-checkoutSessionSchema.methods.calculateTotals = function() {
-  const subtotal = this.items.reduce((total, item) => 
-    total + (item.price * item.quantity), 0
+checkoutSessionSchema.methods.calculateTotals = function () {
+  const subtotal = this.items.reduce(
+    (total, item) => total + item.price * item.quantity,
+    0
   );
 
-  const totalItems = this.items.reduce((total, item) => 
-    total + item.quantity, 0
+  const totalItems = this.items.reduce(
+    (total, item) => total + item.quantity,
+    0
   );
 
   let totalDiscount = 0;
@@ -208,7 +214,17 @@ checkoutSessionSchema.methods.calculateTotals = function() {
     itemDiscounts = this.appliedCoupon.itemDiscounts || {};
   }
 
-  const finalTotal = Math.max(0, subtotal - totalDiscount);
+  const shippingCost = 50;
+  const freeShippingThreshold = 500;
+
+  let finalShippingCost;
+  if (subtotal > freeShippingThreshold) {
+    finalShippingCost = 0;
+  } else {
+    finalShippingCost = shippingCost - shippingDiscount;
+  }
+
+  const finalTotal = Math.max(0, subtotal - totalDiscount + finalShippingCost);
 
   return {
     subtotal: Math.round(subtotal * 100) / 100,
@@ -217,19 +233,20 @@ checkoutSessionSchema.methods.calculateTotals = function() {
     shippingDiscount: Math.round(shippingDiscount * 100) / 100,
     finalTotal: Math.round(finalTotal * 100) / 100,
     itemDiscounts,
-    savings: Math.round(totalDiscount * 100) / 100
+    savings: Math.round(totalDiscount * 100) / 100,
   };
 };
 
 // Clean expired sessions
-checkoutSessionSchema.statics.cleanExpiredSessions = async function() {
+checkoutSessionSchema.statics.cleanExpiredSessions = async function () {
   return await this.deleteMany({
     expiresAt: { $lt: new Date() },
-    status: 'active'
+    status: "active",
   });
 };
 
-const CheckoutSession = mongoose.models.CheckoutSession || 
+const CheckoutSession =
+  mongoose.models.CheckoutSession ||
   mongoose.model("CheckoutSession", checkoutSessionSchema);
 
 export default CheckoutSession;
