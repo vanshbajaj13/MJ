@@ -1,5 +1,7 @@
-// models/CheckoutSession.js - Temporary checkout sessions for Buy Now
+// models/CheckoutSession.js - Updated with stock reservation system
 import mongoose from "mongoose";
+import StockReservation from "./StockReservation.js";
+import Product from "./Product.js";
 
 const checkoutItemSchema = new mongoose.Schema({
   productId: {
@@ -67,6 +69,12 @@ const checkoutSessionSchema = new mongoose.Schema(
 
     // Items in this checkout session
     items: [checkoutItemSchema],
+
+    // Track if stock reservations are active
+    hasActiveReservations: {
+      type: Boolean,
+      default: false,
+    },
 
     // Applied coupon (reuse existing structure)
     appliedCoupon: {
@@ -154,7 +162,57 @@ checkoutSessionSchema.statics.generateSessionId = function () {
   return `cs_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
 };
 
-// Create Buy Now session
+// Validate stock availability considering reservations
+checkoutSessionSchema.statics.validateStockAvailability = async function (items) {
+  const stockValidationErrors = [];
+  
+  // Get all unique product IDs
+  const productIds = [...new Set(items.map(item => item.productId || item.product?._id))];
+  
+  // Fetch all products in one query
+  const products = await Product.find({
+    _id: { $in: productIds },
+  }).populate("sizes.size");
+
+  for (const item of items) {
+    const productId = item.productId || item.product?._id;
+    const product = products.find(p => p._id.toString() === productId.toString());
+
+    if (!product) {
+      stockValidationErrors.push(`Product not found: ${productId}`);
+      continue;
+    }
+
+    const sizeInfo = product.sizes?.find(
+      s => s.size.name === item.size || s.size._id.toString() === item.size.toString()
+    );
+
+    if (!sizeInfo) {
+      stockValidationErrors.push(
+        `${product.name} - size ${item.size} is no longer available`
+      );
+      continue;
+    }
+
+    // Get available quantity considering current reservations
+    const availableQty = await StockReservation.getAvailableQty(
+      productId,
+      item.size,
+      sizeInfo.qtyBuy,
+      sizeInfo.soldQty
+    );
+
+    if (availableQty < item.quantity) {
+      stockValidationErrors.push(
+        `${product.name} (${item.size}) - Only ${availableQty} available, but ${item.quantity} requested`
+      );
+    }
+  }
+
+  return stockValidationErrors;
+};
+
+// Create Buy Now session with stock reservation
 checkoutSessionSchema.statics.createBuyNowSession = async function (data) {
   const {
     productId,
@@ -167,15 +225,29 @@ checkoutSessionSchema.statics.createBuyNowSession = async function (data) {
     userAgent = null,
   } = data;
 
+  // Validate stock availability first
+  const stockErrors = await this.validateStockAvailability([
+    { productId, size, quantity }
+  ]);
+
+  if (stockErrors.length > 0) {
+    throw new Error(`Stock validation failed: ${stockErrors.join(', ')}`);
+  }
+
   const sessionId = this.generateSessionId();
 
-  const session = await this.create({
-    sessionId,
-    userId,
-    guestTrackingId,
-    type: "buy_now",
-    items: [
-      {
+  // Start transaction for atomic operation
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    // Create checkout session
+    const [checkoutSession] = await this.create([{
+      sessionId,
+      userId,
+      guestTrackingId,
+      type: "buy_now",
+      items: [{
         productId,
         name: productData.name,
         price: productData.discountedPrice || productData.price,
@@ -183,16 +255,116 @@ checkoutSessionSchema.statics.createBuyNowSession = async function (data) {
         size,
         quantity,
         slug: productData.slug,
-      },
-    ],
-    ipAddress,
-    userAgent,
-  });
+      }],
+      hasActiveReservations: true,
+      ipAddress,
+      userAgent,
+    }], { session });
 
-  return session;
+    // Create stock reservation
+    await StockReservation.createReservation({
+      sessionId,
+      sessionType: "buy_now",
+      productId,
+      size,
+      quantity,
+      userId,
+      guestTrackingId,
+      ipAddress,
+      userAgent,
+    });
+
+    await session.commitTransaction();
+    return checkoutSession;
+
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
 };
 
-// Calculate session totals (reuse cart logic)
+// Create Cart Checkout session with stock reservations
+checkoutSessionSchema.statics.createCartCheckoutSession = async function (data) {
+  const {
+    cartItems,
+    userId = null,
+    guestTrackingId = null,
+    ipAddress = null,
+    userAgent = null,
+  } = data;
+
+  if (!cartItems || cartItems.length === 0) {
+    throw new Error("Cart items are required for checkout session");
+  }
+
+  // Validate stock availability for all items
+  const stockErrors = await this.validateStockAvailability(cartItems);
+
+  if (stockErrors.length > 0) {
+    throw new Error(`Stock validation failed: ${stockErrors.join(', ')}`);
+  }
+
+  const sessionId = this.generateSessionId();
+
+  // Transform cart items to checkout items format
+  const checkoutItems = cartItems.map(item => ({
+    productId: item.productId || item.product?._id,
+    name: item.name || item.product?.name,
+    price: item.discountedPrice || item.price || item.product?.price,
+    image: item.image || item.product?.images?.[0]?.url || "",
+    size: item.size,
+    quantity: item.quantity,
+    slug: item.slug || item.product?.slug,
+  }));
+
+  // Start transaction for atomic operation
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    // Create checkout session
+    const [checkoutSession] = await this.create([{
+      sessionId,
+      userId,
+      guestTrackingId,
+      type: "cart_checkout",
+      items: checkoutItems,
+      hasActiveReservations: true,
+      ipAddress,
+      userAgent,
+    }], { session });
+
+    // Create stock reservations for all items
+    const reservationItems = cartItems.map(item => ({
+      productId: item.productId || item.product?._id,
+      size: item.size,
+      quantity: item.quantity,
+    }));
+
+    await StockReservation.createMultipleReservations({
+      sessionId,
+      sessionType: "cart_checkout",
+      items: reservationItems,
+      userId,
+      guestTrackingId,
+      ipAddress,
+      userAgent,
+    });
+
+    await session.commitTransaction();
+    return checkoutSession;
+
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
+};
+
+// Calculate session totals (existing logic)
 checkoutSessionSchema.methods.calculateTotals = function () {
   const subtotal = this.items.reduce(
     (total, item) => total + item.price * item.quantity,
@@ -237,12 +409,46 @@ checkoutSessionSchema.methods.calculateTotals = function () {
   };
 };
 
-// Clean expired sessions
+// Release stock reservations when session is completed/cancelled
+checkoutSessionSchema.methods.releaseReservations = async function (newStatus = "completed") {
+  if (this.hasActiveReservations) {
+    await StockReservation.releaseSessionReservations(this.sessionId, newStatus);
+    this.hasActiveReservations = false;
+    await this.save();
+  }
+};
+
+// Clean expired sessions and their reservations
 checkoutSessionSchema.statics.cleanExpiredSessions = async function () {
-  return await this.deleteMany({
+  // Find expired sessions
+  const expiredSessions = await this.find({
     expiresAt: { $lt: new Date() },
     status: "active",
   });
+
+  // Release reservations for expired sessions
+  for (const session of expiredSessions) {
+    await session.releaseReservations("expired");
+  }
+
+  // Update expired sessions
+  const result = await this.updateMany(
+    {
+      expiresAt: { $lt: new Date() },
+      status: "active",
+    },
+    {
+      $set: { 
+        status: "expired",
+        hasActiveReservations: false,
+      },
+    }
+  );
+
+  // Clean up expired reservations
+  await StockReservation.cleanExpiredReservations();
+
+  return result;
 };
 
 const CheckoutSession =

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/dbConnect";
-import Product from "@/models/Product";
+import { Product } from "@/models";
+
 
 let cachedProducts = null;
 let lastFetched = 0;

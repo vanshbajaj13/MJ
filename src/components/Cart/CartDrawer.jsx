@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { useCart } from "@/context/CartContext";
+import { useCheckout } from "@/context/BuyNowContext"; // Import the checkout context
+import { useRouter } from "next/navigation"; // Add router for navigation
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-// Update CartDrawer.jsx to include coupon section
 import CouponSection from "../Coupon/CouponSection";
 import { useUser } from "@/context/UserContext";
 
@@ -27,19 +28,27 @@ export default function CartDrawer({ isOpen, onClose }) {
     shippingDiscount,
     finalTotal,
     itemDiscounts,
+    clearCart, // Add clearCart function
   } = useCart();
-
   const { user } = useUser();
+  const router = useRouter();
+
+  // Add checkout context
+  const { createCartCheckoutSession, loading: checkoutLoading } = useCheckout();
 
   const [isDesktop, setIsDesktop] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false); // Add loading state
   const dragControls = useDragControls();
   const constraintsRef = useRef(null);
   const [showCouponInput, setShowCouponInput] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [stockErrors, setStockErrors] = useState([]);
+  const [showStockErrorModal, setShowStockErrorModal] = useState(false);
+  const [genericError, setGenericError] = useState("");
 
   // Handle screen size detection
   useEffect(() => {
@@ -52,6 +61,98 @@ export default function CartDrawer({ isOpen, onClose }) {
 
     return () => window.removeEventListener("resize", checkScreenSize);
   }, []);
+
+  useEffect(() => {
+    if (genericError) {
+      const timer = setTimeout(() => setGenericError(""), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [genericError]);
+
+  // Add the proceed to checkout function
+  const handleProceedToCheckout = async () => {
+    try {
+      setIsCreatingSession(true);
+
+      // Validate cart is not empty
+      if (!items || items.length === 0) {
+        return;
+      }
+
+      // Transform cart items to the format expected by checkout session
+      const cartItemsForCheckout = items.map((item) => ({
+        productId: item.productId,
+        product: {
+          _id: item.productId,
+          name: item.name,
+          price: item.price,
+          images: item.image ? [{ url: item.image }] : [],
+          slug: item.slug,
+        },
+        name: item.name,
+        price: item.price,
+        discountedPrice: item.discountedPrice || item.price,
+        image: item.image,
+        slug: item.slug,
+        size: item.size,
+        quantity: item.quantity,
+      }));
+      // console.log(appliedCoupon);
+
+      // Create checkout session with cart items
+      const result = await createCartCheckoutSession(
+        cartItemsForCheckout,
+        appliedCoupon ? appliedCoupon.code : null
+      );
+
+      if (result.success) {
+        // Close the cart drawer
+        onClose();
+
+        // Optional: Clear cart after successful session creation
+        // You might want to clear it only after successful payment
+        // await clearCart();
+
+        // Redirect to checkout page with session ID
+        router.push(`/checkout?session=${result.sessionId}`);
+      }
+    } catch (error) {
+      console.log("Checkout error:", error);
+
+      if (error.type === "STOCK_VALIDATION_ERROR") {
+        setStockErrors(error.errors || []);
+        setShowStockErrorModal(true);
+      } else {
+        setGenericError(
+          error.message || "Unable to proceed to checkout. Please try again."
+        );
+      }
+    } finally {
+      setIsCreatingSession(false);
+    }
+  };
+
+  // Function to automatically update cart with available quantities
+  const handleAutoUpdateQuantities = () => {
+    stockErrors.forEach((error) => {
+      if (error.available > 0) {
+        updateQuantity(error.productId, error.size, error.available);
+      } else {
+        removeFromCart(error.productId, error.size);
+      }
+    });
+    setStockErrors([]);
+    setShowStockErrorModal(false);
+    // Clear any generic errors
+    setGenericError("");
+  };
+
+  // Function to close stock error modal
+  const handleCloseStockErrorModal = () => {
+    setStockErrors([]);
+    setShowStockErrorModal(false);
+    onClose();
+  };
 
   const handleInputChange = (e) => {
     const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -100,7 +201,7 @@ export default function CartDrawer({ isOpen, onClose }) {
       setTimeout(() => setError(""), 5000);
     }
   };
-  
+
   // Handle escape key and body scroll
   useEffect(() => {
     const handleEscape = (e) => {
@@ -130,12 +231,9 @@ export default function CartDrawer({ isOpen, onClose }) {
     const velocity = info.velocity.y;
     const dragDistance = info.offset.y;
 
-    // If dragging down significantly or with high downward velocity, minimize
     if (dragDistance > 100 || velocity > 300) {
       setIsFullScreen(false);
-    }
-    // If dragging up significantly or with high upward velocity, maximize
-    else if (dragDistance < -100 || velocity < -300) {
+    } else if (dragDistance < -100 || velocity < -300) {
       setIsFullScreen(true);
     }
 
@@ -146,7 +244,6 @@ export default function CartDrawer({ isOpen, onClose }) {
     setIsFullScreen(!isFullScreen);
   };
 
-  // Add helper functions to get item discounts
   const getItemDiscount = (item) => {
     if (!itemDiscounts) return 0;
     const itemKey = `${item.productId}-${item.size}`;
@@ -158,6 +255,14 @@ export default function CartDrawer({ isOpen, onClose }) {
     const originalTotal = item.price * item.quantity;
     return originalTotal - discount;
   };
+
+  // Check if checkout button should be disabled
+  const isCheckoutDisabled =
+    loading ||
+    checkoutLoading ||
+    isCreatingSession ||
+    !items ||
+    items.length === 0;
 
   return (
     <div className="w-full h-full">
@@ -225,6 +330,28 @@ export default function CartDrawer({ isOpen, onClose }) {
             `}
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Coupon Loading Overlay */}
+              <AnimatePresence>
+                {(couponLoading || isCheckoutDisabled) && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute inset-0 bg-white/70 backdrop-blur-sm z-[70] flex items-center justify-center"
+                  >
+                    <motion.div
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.8, opacity: 0 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                    >
+                      <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin"></div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Header with fade-in animation */}
               <motion.div
                 initial={{ opacity: 0, y: -20 }}
@@ -285,6 +412,93 @@ export default function CartDrawer({ isOpen, onClose }) {
                       </svg>
                       You are eligible for free shipping
                     </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Stock Error Modal */}
+              <AnimatePresence>
+                {showStockErrorModal && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[80] flex items-center justify-center p-4"
+                    onClick={handleCloseStockErrorModal}
+                  >
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.9, opacity: 0 }}
+                      className="bg-white rounded-2xl shadow-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center gap-3 mb-5">
+                        <div className="mx-auto">
+                          <p className="text-sm text-gray-600">
+                            Some items in your cart can’t be fulfilled
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* <div className="space-y-3 mb-6">
+                        {stockErrors.map((error, index) => (
+                          <div
+                            key={index}
+                            className="bg-red-50 border border-red-200 rounded-lg p-3"
+                          >
+                            <p className="font-medium text-gray-900">
+                              {error.productName}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              Size: {error.size}
+                            </p>
+                            <p className="text-sm text-red-600 mt-1">
+                              Requested {error.requested}, Available{" "}
+                              {error.available}
+                            </p>
+                          </div>
+                        ))}
+                      </div> */}
+
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={handleAutoUpdateQuantities}
+                          className={`
+    w-full py-3 px-6 rounded-md font-semibold text-base transition-all duration-300
+    relative overflow-hidden group
+    bg-gradient-to-r from-gray-700 via-gray-800 to-gray-900 text-white 
+    hover:from-gray-900 hover:via-black hover:to-black
+    shadow-xl
+  `}
+                        >
+                          <span className="relative z-10">
+                            Update Quantities
+                          </span>
+                        </button>
+
+                        <button
+                          onClick={handleCloseStockErrorModal}
+                          className="w-full border border-gray-300 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+                        >
+                          Continue Shopping
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Generic Error Toast */}
+              <AnimatePresence>
+                {genericError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="fixed top-6 left-1/2 -translate-x-1/2 px-4 py-2 bg-red-600 text-white text-sm rounded-lg shadow-lg z-[90]"
+                  >
+                    {genericError}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -645,7 +859,10 @@ export default function CartDrawer({ isOpen, onClose }) {
                         transition={{ duration: 0.3 }}
                         className="text-xl lg:text-2xl font-bold"
                       >
-                        ₹{finalPrice.toFixed(2)}
+                        ₹
+                        {finalPrice < 500
+                          ? (finalPrice - 50).toFixed(2)
+                          : finalPrice.toFixed(2)}
                       </motion.span>
                     </div>
 
@@ -653,25 +870,44 @@ export default function CartDrawer({ isOpen, onClose }) {
                       Taxes and shipping calculated at checkout
                     </p>
 
-                    {/* Checkout Button */}
-                    <Link
-                      href="/checkout"
-                      onClick={onClose}
-                      className="w-full block"
+                    {/* Updated Checkout Button */}
+                    <motion.button
+                      onClick={handleProceedToCheckout}
+                      disabled={isCheckoutDisabled}
+                      whileHover={
+                        !isCheckoutDisabled
+                          ? {
+                              scale: 1.02,
+                              backgroundColor: "rgb(31, 41, 55)",
+                              boxShadow:
+                                "0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+                            }
+                          : {}
+                      }
+                      whileTap={!isCheckoutDisabled ? { scale: 0.98 } : {}}
+                      className={`w-full py-4 px-6 rounded-full font-medium text-center transition-all shadow-lg text-base lg:text-lg ${
+                        isCheckoutDisabled
+                          ? "bg-gray-400 text-gray-200 cursor-not-allowed"
+                          : "bg-gray-900 text-white hover:bg-gray-800"
+                      }`}
                     >
-                      <motion.div
-                        whileHover={{
-                          scale: 1.02,
-                          backgroundColor: "rgb(31, 41, 55)",
-                          boxShadow:
-                            "0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-                        }}
-                        whileTap={{ scale: 0.98 }}
-                        className="w-full bg-gray-900 text-white py-4 px-6 rounded-full font-medium text-center transition-colors shadow-lg text-base lg:text-lg cursor-pointer"
-                      >
-                        Checkout
-                      </motion.div>
-                    </Link>
+                      {isCreatingSession ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{
+                              duration: 1,
+                              repeat: Infinity,
+                              ease: "linear",
+                            }}
+                            className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                          />
+                          Creating Session...
+                        </div>
+                      ) : (
+                        "Proceed to Checkout"
+                      )}
+                    </motion.button>
                     {/* Mobile Drag Handle - Only show on mobile */}
                     {!isDesktop && (
                       <motion.div

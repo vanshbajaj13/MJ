@@ -113,9 +113,29 @@ export default function UnifiedOrderSummary({
     return originalTotal - discount;
   };
 
-
   return (
     <>
+      {/* Coupon Loading Overlay */}
+      <AnimatePresence>
+        {couponLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 bg-white/70 backdrop-blur-sm z-[70] flex items-center justify-center"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+            >
+              <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin"></div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Mobile Layout */}
       <div
         className="lg:hidden bg-white border-b border-gray-200 rounded-b-2xl"
@@ -515,14 +535,13 @@ function PriceBreakdown({
 
         <div className="flex justify-between text-sm">
           <span className="text-gray-600">Shipping</span>
-          {shippingDiscount > 0 ?
-          <span className="text-green-600">Free</span>
-          :
-            finalTotal < 500 ? 
-          <span className="text-gray-900">₹50</span>
-          :
-          <span className="text-green-600">Free</span>
-          }
+          {shippingDiscount > 0 ? (
+            <span className="text-green-600">Free</span>
+          ) : finalTotal < 500 ? (
+            <span className="text-gray-900">₹50</span>
+          ) : (
+            <span className="text-green-600">Free</span>
+          )}
         </div>
 
         {/* <div className="flex justify-between text-sm">
@@ -558,7 +577,7 @@ function PriceBreakdown({
         </motion.div>
       )}
       {isMobile && (
-        <div className="flex flex-col items-center justify-center mt-0 text-gray-500" >
+        <div className="flex flex-col items-center justify-center mt-0 text-gray-500">
           <motion.svg
             className="w-5 h-5"
             fill="none"

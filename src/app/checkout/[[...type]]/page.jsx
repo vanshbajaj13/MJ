@@ -1,9 +1,8 @@
-// pages/checkout/[[...type]]/page.js - Fixed unified checkout
+// pages/checkout/[[...type]]/page.js - Session-only unified checkout
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCart } from "@/context/CartContext";
-import { useBuyNow } from "@/context/BuyNowContext";
+import { useCheckout } from "@/context/BuyNowContext"; // Using unified context
 import { useUser } from "@/context/UserContext";
 import CheckoutForm from "@/components/checkout/CheckoutForm";
 import UnifiedOrderSummary from "@/components/checkout/UnifiedOrderSummary";
@@ -13,57 +12,41 @@ export default function UnifiedCheckoutPage() {
   const searchParams = useSearchParams();
   const { user, loading: userLoading } = useUser();
 
-  // Cart context
+  // Unified Checkout context
   const {
-    items: cartItems,
-    totalItems: cartTotalItems,
-    loading: cartLoading,
-    clearCart,
-    appliedCoupon: cartAppliedCoupon,
-    couponLoading: cartCouponLoading,
-    applyCoupon: cartApplyCoupon,
-    removeCoupon: cartRemoveCoupon,
-    subtotal: cartSubtotal,
-    totalDiscount: cartTotalDiscount,
-    finalTotal: cartFinalTotal,
-    itemDiscounts: cartItemDiscounts,
-  } = useCart();
-
-  // Buy Now context
-  const {
-    items: buyNowItems,
-    totalItems: buyNowTotalItems,
-    loading: buyNowLoading,
+    items,
+    totalItems,
+    loading: checkoutLoading,
     clearSession,
     loadSession,
-    appliedCoupon: buyNowAppliedCoupon,
-    couponLoading: buyNowCouponLoading,
-    applyCoupon: buyNowApplyCoupon,
-    removeCoupon: buyNowRemoveCoupon,
-    subtotal: buyNowSubtotal,
-    totalDiscount: buyNowTotalDiscount,
-    shippingDiscount:buynowShippingDiscount,
-    finalTotal: buyNowFinalTotal,
-    itemDiscounts: buyNowItemDiscounts,
-    isActive: buyNowIsActive,
+    appliedCoupon,
+    couponLoading,
+    applyCoupon,
+    removeCoupon,
+    subtotal,
+    totalDiscount,
+    shippingDiscount,
+    finalTotal,
+    itemDiscounts,
+    isActive,
     sessionId,
-  } = useBuyNow();
+    type: sessionType,
+  } = useCheckout();
 
   const [isInitialized, setIsInitialized] = useState(false);
-  const [checkoutMode, setCheckoutMode] = useState(null);
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [countdown, setCountdown] = useState(10);
   const [sessionError, setSessionError] = useState(null);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
 
-  // Function to load buy now session
-  const loadBuyNowSession = async (sessionId) => {
+  // Function to load session
+  const loadCheckoutSession = async (sessionId) => {
     try {
       // console.log('Loading session:', sessionId);
       const result = await loadSession(sessionId);
       // console.log('Session loaded successfully:', result);
     } catch (error) {
-      console.error("Error loading session:", error);
+      // console.error("Error loading session:", error);
       setSessionError(error.message);
       // Don't redirect immediately, let user see the error
       setTimeout(() => {
@@ -72,69 +55,69 @@ export default function UnifiedCheckoutPage() {
     }
   };
 
-  // Load session data if session parameter exists
+  // Load session data when session parameter exists
   useEffect(() => {
-    const mode = searchParams.get("mode");
     const sessionParam = searchParams.get("session");
 
-    if (mode === "buy_now" && sessionParam) {
+    if (sessionParam) {
       // Only load if we don't already have this session active
-      if (!buyNowIsActive || sessionId !== sessionParam) {
-        loadBuyNowSession(sessionParam);
+      if (!isActive || sessionId !== sessionParam) {
+        loadCheckoutSession(sessionParam);
       }
+    } else {
+      // No session parameter - invalid access
+      setSessionError("No session ID provided");
+      startRedirectCountdown();
     }
-  }, [searchParams, buyNowIsActive, sessionId]);
+  }, [searchParams, isActive, sessionId]);
 
-  // Determine checkout mode and validate
+  // Validate session and initialize
   useEffect(() => {
-    if (!cartLoading && !buyNowLoading && !userLoading) {
-      const mode = searchParams.get("mode");
+    if (!checkoutLoading && !userLoading) {
       const sessionParam = searchParams.get("session");
 
-      // console.log('Determining checkout mode:', {
-      //   mode,
+      // console.log('Validating session:', {
       //   sessionParam,
-      //   buyNowIsActive,
-      //   buyNowItemsLength: buyNowItems.length,
-      //   cartItemsLength: cartItems.length,
+      //   isActive,
+      //   itemsLength: items.length,
       //   sessionError
       // });
 
       // Handle session error
       if (sessionError) {
-        setCheckoutMode(null);
         setIsInitialized(true);
         return;
       }
 
-      // Check for Buy Now mode first
-      if (mode === "buy_now" && sessionParam) {
-        if (buyNowIsActive && buyNowItems.length > 0) {
-          setCheckoutMode("buy_now");
-        } else {
-          // Still loading session
-          return;
+      // Check if session is valid and has items
+      if (sessionParam && isActive && items.length > 0) {
+        setIsInitialized(true);
+      } 
+      // No session parameter provided
+      else if (!sessionParam) {
+        setSessionError("No session ID provided");
+        startRedirectCountdown();
+        setIsInitialized(true);
+      }
+      // Session parameter exists but session not loaded or empty
+      else if (sessionParam && (!isActive || items.length === 0)) {
+        // Still loading session or session is empty
+        if (!sessionError) {
+          return; // Keep waiting for session to load
         }
       }
-      // Fallback to cart mode
-      else if (cartItems.length > 0) {
-        setCheckoutMode("cart");
-      }
-      // No valid checkout data
+      // Fallback - invalid state
       else {
-        setCheckoutMode(null);
+        setSessionError("Invalid checkout session");
         startRedirectCountdown();
+        setIsInitialized(true);
       }
-
-      setIsInitialized(true);
     }
   }, [
-    cartLoading,
-    buyNowLoading,
+    checkoutLoading,
     userLoading,
-    cartItems,
-    buyNowItems,
-    buyNowIsActive,
+    items,
+    isActive,
     searchParams,
     sessionError,
   ]);
@@ -161,90 +144,47 @@ export default function UnifiedCheckoutPage() {
 
   // Get active context data
   const getActiveContext = () => {
-    if (checkoutMode === "buy_now") {
-      // console.log(buynowShippingDiscount);
-
-      return {
-        items: buyNowItems,
-        totalItems: buyNowTotalItems,
-        appliedCoupon: buyNowAppliedCoupon,
-        couponLoading: buyNowCouponLoading,
-        applyCoupon: buyNowApplyCoupon,
-        removeCoupon: buyNowRemoveCoupon,
-        subtotal: buyNowSubtotal,
-        totalDiscount: buyNowTotalDiscount,
-        shippingDiscount:buynowShippingDiscount,
-        finalTotal: buyNowFinalTotal,
-        itemDiscounts: buyNowItemDiscounts,
-        clearItems: clearSession,
-        mode: "buy_now",
-      };
-    } else {
-      // console.log(cartAppliedCoupon);
-
-      return {
-        items: cartItems,
-        totalItems: cartTotalItems,
-        appliedCoupon: cartAppliedCoupon,
-        couponLoading: cartCouponLoading,
-        applyCoupon: cartApplyCoupon,
-        removeCoupon: cartRemoveCoupon,
-        subtotal: cartSubtotal,
-        totalDiscount: cartTotalDiscount,
-        finalTotal: cartFinalTotal,
-        itemDiscounts: cartItemDiscounts,
-        clearItems: clearCart,
-        mode: "cart",
-      };
-    }
+    return {
+      items,
+      totalItems,
+      appliedCoupon,
+      couponLoading,
+      applyCoupon,
+      removeCoupon,
+      subtotal,
+      totalDiscount,
+      shippingDiscount,
+      finalTotal,
+      itemDiscounts,
+      clearItems: clearSession,
+      mode: sessionType || "checkout", // Use session type or default
+    };
   };
 
   const activeContext = getActiveContext();
-
-//   useEffect(() => {
-//   const handlePopState = (event) => {
-//     event.preventDefault();
-//     setShowExitConfirmation(true);
-//     // Push the current URL back so user stays on checkout until they confirm
-//     window.history.pushState(null, "", window.location.href);
-//   };
-
-//   window.addEventListener("popstate", handlePopState);
-
-//   // Prevent initial back nav
-//   window.history.pushState(null, "", window.location.href);
-
-//   return () => {
-//     window.removeEventListener("popstate", handlePopState);
-//   };
-// }, []);
-
 
   const handleBack = () => {
     setShowExitConfirmation(true);
   };
 
   // Show loading if still initializing
-  if (!isInitialized || cartLoading || buyNowLoading || userLoading) {
+  if (!isInitialized || checkoutLoading || userLoading) {
     return <CheckoutLoadingState />;
   }
 
-  // Show empty state if no valid checkout mode
-  if (!checkoutMode) {
+  // Show empty state if no valid session or error
+  if (sessionError || !isActive || items.length === 0) {
     return (
       <EmptyCheckoutState
         countdown={countdown}
         onContinueShopping={() => router.push("/")}
-        error={sessionError}
+        error={sessionError || "No items found in checkout session"}
       />
     );
   }
 
   const handleConfirmExit = async () => {
-    if (checkoutMode === "buy_now") {
-      clearSession();
-      // Close session on server
-    }
+    clearSession();
     router.back();
   };
 
@@ -256,7 +196,14 @@ export default function UnifiedCheckoutPage() {
     <div className="fixed inset-0 bg-gray-50 z-50 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="bg-white rounded-lg shadow-sm px-4 pt-2 lg:p-4 lg:px-6 flex justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
+          {sessionType && (
+            <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+              {sessionType === 'buy_now' ? 'Buy Now' : 'Cart Checkout'}
+            </span>
+          )}
+        </div>
         <button
           onClick={handleBack}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors group"
@@ -276,6 +223,7 @@ export default function UnifiedCheckoutPage() {
           </svg>
         </button>
       </div>
+
       {/* Exit Confirmation Modal */}
       {showExitConfirmation && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
@@ -297,7 +245,6 @@ export default function UnifiedCheckoutPage() {
                 </svg>
               </div>
 
-              
               <p className="text-gray-600 text-sm mb-1">
                 Products in huge demand might run{" "}
                 <span className="text-orange-600 font-medium">
@@ -326,6 +273,7 @@ export default function UnifiedCheckoutPage() {
           </div>
         </div>
       )}
+
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Order Summary - fixed position, no scrolling */}
@@ -351,7 +299,7 @@ export default function UnifiedCheckoutPage() {
         <div className="flex-1 overflow-auto lg:p-6 lg:pt-0 scrollbar-hide">
           <CheckoutForm
             context={activeContext}
-            sessionId={checkoutMode === "buy_now" ? sessionId : null}
+            sessionId={sessionId}
           />
         </div>
       </div>
@@ -479,38 +427,28 @@ function EmptyCheckoutState({ onContinueShopping, countdown, error }) {
       <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
         <div className="w-24 h-24 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
           <svg
-            className={`w-12 h-12 ${error ? "text-red-400" : "text-gray-400"}`}
+            className="w-12 h-12 text-red-400"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            {error ? (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-              />
-            ) : (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M16 11V7a4 4 0 00-8 0v4M5 9h14l-1 12H6L5 9z"
-              />
-            )}
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+            />
           </svg>
         </div>
 
         <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          {error ? "Session Error" : "No items to checkout"}
+          Checkout Session Error
         </h2>
         <p className="text-gray-600 mb-4">
-          {error ||
-            "Your checkout session has expired or no items were found. Start shopping to add items!"}
+          {error || "Your checkout session has expired or is invalid."}
         </p>
 
-        {countdown > 0 && !error && (
+        {countdown > 0 && (
           <p className="text-sm text-gray-500 mb-6">
             You will be redirected to the home page in{" "}
             <span className="font-semibold text-gray-900">{countdown}</span>{" "}

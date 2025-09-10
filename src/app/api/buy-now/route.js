@@ -1,8 +1,9 @@
-// api/buy-now/route.js - Create Buy Now checkout session
+// api/buy-now/route.js - Updated with stock reservation system
 import dbConnect from "@/lib/dbConnect";
 import { getCurrentUser } from "@/lib/auth";
 import Product from "@/models/Product";
 import CheckoutSession from "@/models/CheckoutSession";
+import StockReservation from "@/models/StockReservation";
 import crypto from "crypto";
 
 export async function POST(request) {
@@ -34,11 +35,33 @@ export async function POST(request) {
       }, { status: 404 });
     }
 
-    // Check stock/size availability
-    const sizeInfo = product.sizes?.find(s => s.size.name === size);
-    if (!sizeInfo || sizeInfo.qtyBuy < quantity) {
+    // Find the specific size information
+    const sizeInfo = product.sizes?.find(s => 
+      s.size.name === size || s.size._id.toString() === size.toString()
+    );
+    
+    if (!sizeInfo) {
       return Response.json({ 
-        message: "Selected size/quantity not available" 
+        message: "Selected size is not available for this product" 
+      }, { status: 400 });
+    }
+
+    // Check available quantity considering current reservations
+    const availableQty = await StockReservation.getAvailableQty(
+      productId,
+      size,
+      sizeInfo.qtyBuy,
+      sizeInfo.soldQty
+    );
+
+    if (availableQty < quantity) {
+      if (availableQty === 0) {
+        return Response.json({ 
+          message: `Size ${size} is currently out of stock` 
+        }, { status: 400 });
+      }
+      return Response.json({ 
+        message: `Only ${availableQty} items available for size ${size}` 
       }, { status: 400 });
     }
 
@@ -56,45 +79,72 @@ export async function POST(request) {
       userAgent: request.headers.get('user-agent') || 'unknown'
     };
 
-    // Calculate discounted price
-    // const discountedPrice = product.discount > 0 
-    //   ? product.price * (1 - product.discount / 100)
-    //   : product.price;
+    try {
+      // Create checkout session with stock reservation (atomic operation)
+      const session = await CheckoutSession.createBuyNowSession({
+        productId: product._id,
+        productData: {
+          name: product.name,
+          price: product.price,
+          discountedPrice: product.price,
+          images: product.images,
+          slug: product.slug
+        },
+        size,
+        quantity,
+        userId: user?._id,
+        guestTrackingId,
+        ...clientInfo
+      });
 
-    // Create checkout session
-    const session = await CheckoutSession.createBuyNowSession({
-      productId: product._id,
-      productData: {
-        name: product.name,
-        price: product.price,
-        discountedPrice: product.price,
-        images: product.images,
-        slug: product.slug
-      },
-      size,
-      quantity,
-      userId: user?._id,
-      guestTrackingId,
-      ...clientInfo
-    });
+      // Calculate initial totals
+      const totals = session.calculateTotals();
 
-    // Calculate initial totals
-    const totals = session.calculateTotals();
+      return Response.json({
+        success: true,
+        sessionId: session.sessionId,
+        session: {
+          id: session.sessionId,
+          type: session.type,
+          items: session.items,
+          appliedCoupon: null,
+          totals,
+          expiresAt: session.expiresAt,
+          isGuest: !user,
+          guestTrackingId,
+          hasActiveReservations: session.hasActiveReservations,
+          reservationInfo: {
+            message: "Stock reserved for 5 minutes",
+            reservedQty: quantity,
+            productName: product.name,
+            size: size
+          }
+        },
+        message: "Buy now checkout session created successfully with stock reservation"
+      });
 
-    return Response.json({
-      success: true,
-      sessionId: session.sessionId,
-      session: {
-        id: session.sessionId,
-        type: session.type,
-        items: session.items,
-        appliedCoupon: null,
-        totals,
-        expiresAt: session.expiresAt,
-        isGuest: !user,
-        guestTrackingId
+    } catch (sessionError) {
+      console.error("Session creation error:", sessionError);
+      
+      // Check if it's a stock validation error
+      if (sessionError.message.includes("Stock validation failed")) {
+        return Response.json({ 
+          success: false,
+          type: "STOCK_VALIDATION_ERROR",
+          message: "The requested quantity is no longer available. Please try again with a lower quantity.",
+          errors: [{
+            productId: product._id,
+            productName: product.name,
+            size: size,
+            requested: quantity,
+            available: 0, // We don't have exact availability here
+            error: "Stock validation failed during session creation"
+          }]
+        }, { status: 400 });
       }
-    });
+
+      throw sessionError; // Re-throw other errors
+    }
 
   } catch (error) {
     console.error("Buy now error:", error);
@@ -103,3 +153,4 @@ export async function POST(request) {
     }, { status: 500 });
   }
 }
+

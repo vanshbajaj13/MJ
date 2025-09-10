@@ -1,12 +1,12 @@
-// context/BuyNowContext.jsx - Fixed unified context for Buy Now and Cart checkout
+// context/CheckoutContext.jsx - Unified context for Buy Now and Cart checkout
 "use client";
 import { createContext, useContext, useReducer, useEffect } from "react";
 import { useUser } from "./UserContext";
 
-const BuyNowContext = createContext();
+const CheckoutContext = createContext();
 
-// Reducer to handle buy now state
-const buyNowReducer = (state, action) => {
+// Reducer to handle checkout state
+const checkoutReducer = (state, action) => {
   switch (action.type) {
     case "SET_SESSION":
       return {
@@ -70,7 +70,7 @@ const initialState = {
 };
 
 export function BuyNowProvider({ children }) {
-  const [state, dispatch] = useReducer(buyNowReducer, initialState);
+  const [state, dispatch] = useReducer(checkoutReducer, initialState);
   const { user } = useUser();
 
   // Clear expired session
@@ -109,10 +109,9 @@ export function BuyNowProvider({ children }) {
         throw new Error(data.message || "Failed to load session");
       }
 
-      // Fix: Handle the session data structure properly
       const sessionData = {
         sessionId: data.session.sessionId,
-        id: data.session.sessionId, // For backward compatibility
+        id: data.session.sessionId,
         items: data.session.items || [],
         appliedCoupon: data.session.appliedCoupon || null,
         type: data.session.type,
@@ -135,7 +134,7 @@ export function BuyNowProvider({ children }) {
     }
   };
 
-  // Create Buy Now session
+  // Create Buy Now session (single product)
   const createBuyNowSession = async (productId, size, quantity = 1) => {
     dispatch({ type: "SET_LOADING", payload: true });
 
@@ -153,10 +152,9 @@ export function BuyNowProvider({ children }) {
         throw new Error(data.message || "Failed to create buy now session");
       }
 
-      // Fix: Handle the response structure properly
       const sessionData = {
         sessionId: data.sessionId,
-        id: data.sessionId, // For backward compatibility
+        id: data.sessionId,
         items: data.session.items || [],
         appliedCoupon: data.session.appliedCoupon || null,
         type: data.session.type,
@@ -179,9 +177,64 @@ export function BuyNowProvider({ children }) {
     }
   };
 
+  // Create Cart Checkout session (multiple products)
+const createCartCheckoutSession = async (cartItems, initialCoupon = null) => {
+  dispatch({ type: "SET_LOADING", payload: true });
+
+  try {
+    const response = await fetch("/api/cart-checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ cartItems }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      // 🔥 Throw full JSON, not just message
+      throw data;
+    }
+
+    const sessionData = {
+      sessionId: data.sessionId,
+      id: data.sessionId,
+      items: data.session.items || [],
+      appliedCoupon: data.session.appliedCoupon || null,
+      type: data.session.type,
+      expiresAt: data.session.expiresAt,
+      isGuest: data.session.isGuest,
+      guestTrackingId: data.session.guestTrackingId,
+    };
+
+    dispatch({ type: "SET_SESSION", payload: sessionData });
+
+    if (initialCoupon) {
+      try {
+        await applyCoupon(initialCoupon, data.sessionId); // 👈 pass id explicitly
+      } catch (couponError) {
+        console.warn("Failed to apply initial coupon:", couponError.message);
+      }
+    }
+
+    return {
+      success: true,
+      sessionId: data.sessionId,
+      session: sessionData,
+    };
+  } catch (error) {
+    // 👇 Pass JSON errors upward so CartDrawer can handle them
+    throw error;
+  } finally {
+    dispatch({ type: "SET_LOADING", payload: false });
+  }
+};
+
+
   // Apply coupon to session
-  const applyCoupon = async (couponCode) => {
-    if (!state.sessionId) {
+  const applyCoupon = async (couponCode, sessionIdOverride = null) => {
+    const sessionId = sessionIdOverride || state.sessionId;
+    if (!sessionId) {
       throw new Error("No active checkout session");
     }
 
@@ -193,18 +246,15 @@ export function BuyNowProvider({ children }) {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          sessionId: state.sessionId,
+          sessionId: sessionId, // ✅ use either override or state
           couponCode: couponCode.trim().toUpperCase(),
         }),
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
+      if (!response.ok)
         throw new Error(data.message || "Failed to apply coupon");
-      }
 
-      // Apply server-validated coupon data (same structure as cart)
       const couponData = {
         code: data.coupon.code,
         type: data.coupon.type,
@@ -217,15 +267,12 @@ export function BuyNowProvider({ children }) {
       };
 
       dispatch({ type: "APPLY_COUPON", payload: couponData });
-
       return {
         success: true,
         message: data.message,
         discount: data.discount,
         totals: data.totals,
       };
-    } catch (error) {
-      throw error;
     } finally {
       dispatch({ type: "SET_COUPON_LOADING", payload: false });
     }
@@ -264,10 +311,8 @@ export function BuyNowProvider({ children }) {
 
   // Clear session manually (both client and server)
   const clearSession = async (closeOnServer = true) => {
-    // Always clear client state immediately
     dispatch({ type: "CLEAR_SESSION" });
 
-    // Optionally close session on server
     if (closeOnServer && state.sessionId) {
       try {
         await fetch(`/api/checkout-session/${state.sessionId}/close`, {
@@ -276,12 +321,11 @@ export function BuyNowProvider({ children }) {
         });
       } catch (error) {
         console.error("Error closing session on server:", error);
-        // Don't throw - client state is already cleared
       }
     }
   };
 
-  // Calculate totals (same as cart for consistency)
+  // Calculate totals
   const calculateTotals = () => {
     const subtotal = state.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
@@ -302,7 +346,7 @@ export function BuyNowProvider({ children }) {
       itemDiscounts = state.appliedCoupon.itemDiscounts || {};
     }
 
-    const shippingCost = 50; 
+    const shippingCost = 50;
     const freeShippingThreshold = 500;
 
     let finalShippingCost = 0;
@@ -344,35 +388,42 @@ export function BuyNowProvider({ children }) {
     isGuest: state.isGuest,
     guestTrackingId: state.guestTrackingId,
 
-    // Calculated values (same as cart for component compatibility)
+    // Calculated values
     totalItems: totals.totalItems,
-    totalPrice: totals.subtotal, // For backward compatibility
+    totalPrice: totals.subtotal,
     subtotal: totals.subtotal,
     totalDiscount: totals.totalDiscount,
     shippingDiscount: totals.shippingDiscount,
-    finalPrice: totals.finalTotal, // For backward compatibility
+    finalPrice: totals.finalTotal,
     finalTotal: totals.finalTotal,
-    discountAmount: totals.totalDiscount, // For backward compatibility
+    discountAmount: totals.totalDiscount,
     itemDiscounts: totals.itemDiscounts,
     savings: totals.savings,
 
     // Actions
     loadSession,
     createBuyNowSession,
+    createCartCheckoutSession, // New action for cart checkout
     applyCoupon,
     removeCoupon,
     clearSession,
   };
 
   return (
-    <BuyNowContext.Provider value={value}>{children}</BuyNowContext.Provider>
+    <CheckoutContext.Provider value={value}>
+      {children}
+    </CheckoutContext.Provider>
   );
 }
 
-export const useBuyNow = () => {
-  const context = useContext(BuyNowContext);
+// Hook for using checkout context
+export const useCheckout = () => {
+  const context = useContext(CheckoutContext);
   if (!context) {
-    throw new Error("useBuyNow must be used within a BuyNowProvider");
+    throw new Error("useCheckout must be used within a CheckoutProvider");
   }
   return context;
 };
+
+// Backward compatibility - keep useBuyNow as alias
+export const useBuyNow = useCheckout;
