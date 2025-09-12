@@ -13,7 +13,7 @@ export class CouponValidator {
    * @param {Array} cartItems - Array of cart items with populated product data
    * @returns {Object} Validation result with coupon data and discount calculation
    */
-  static async validateAndCalculate(couponCode, userId = null, cartItems = []) {
+  static async validateAndCalculate(couponCode, userId = null, cartItems = [],guestId = null) {
     try {
       await dbConnect();
 
@@ -21,7 +21,7 @@ export class CouponValidator {
       const coupon = await this.findValidCoupon(couponCode);
       
       // Step 2: Check usage limits
-      await this.checkUsageLimits(coupon, userId);
+      await this.checkUsageLimits(coupon, userId, guestId);
       
       // Step 3: Validate cart and calculate discount
       const discountResult = await this.calculateDiscount(coupon, cartItems);

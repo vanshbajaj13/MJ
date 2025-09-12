@@ -117,8 +117,6 @@ export default function CartDrawer({ isOpen, onClose }) {
         router.push(`/checkout?session=${result.sessionId}`);
       }
     } catch (error) {
-      console.log("Checkout error:", error);
-
       if (error.type === "STOCK_VALIDATION_ERROR") {
         setStockErrors(error.errors || []);
         setShowStockErrorModal(true);
@@ -332,7 +330,7 @@ export default function CartDrawer({ isOpen, onClose }) {
             >
               {/* Coupon Loading Overlay */}
               <AnimatePresence>
-                {(couponLoading || isCheckoutDisabled) && (
+                {(couponLoading) && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -859,10 +857,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                         transition={{ duration: 0.3 }}
                         className="text-xl lg:text-2xl font-bold"
                       >
-                        ₹
-                        {finalPrice < 500
-                          ? (finalPrice - 50).toFixed(2)
-                          : finalPrice.toFixed(2)}
+                        ₹{finalPrice.toFixed(2)}
                       </motion.span>
                     </div>
 

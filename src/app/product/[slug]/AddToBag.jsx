@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCart } from "@/context/CartContext";
 import { useRouter } from "next/navigation";
 import { useBuyNow } from "@/context/BuyNowContext";
@@ -13,6 +13,10 @@ export default function AddToBag({ product }) {
   const [selectedSize, setSelectedSize] = useState("");
   const [sizeError, setSizeError] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [stockData, setStockData] = useState(null);
+  const [stockLoading, setStockLoading] = useState(true);
+  const [stockError, setStockError] = useState(null);
+  
   const router = useRouter();
   const { createBuyNowSession, loading: buyNowLoading } = useBuyNow();
   const { addToCart } = useCart();
@@ -32,6 +36,58 @@ export default function AddToBag({ product }) {
       block: "center",
     });
   };
+
+  const fetchProductData = async (slug) => {
+    try {
+      const res = await fetch(`/api/products/stock-check?slug=${slug}`, {
+        cache: "no-store", // ✅ always fresh stock data
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch product data");
+      }
+
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.error("Error fetching product data:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const loadFreshStockData = async () => {
+    if (!product?.slug) return;
+    
+    setStockLoading(true);
+    setStockError(null);
+    
+    try {
+      const result = await fetchProductData(product.slug);
+      
+      if (result.success && result.data) {
+        setStockData(result.data);
+      } else {
+        setStockError(result.error || "Failed to load stock data");
+      }
+    } catch (error) {
+      console.error("Error loading fresh stock data:", error);
+      setStockError("Failed to load stock data");
+    } finally {
+      setStockLoading(false);
+    }
+  };
+
+  // Load fresh stock data on component mount
+  useEffect(() => {
+    loadFreshStockData();
+  }, [product?.slug]);
+
+  // Get the current product data (fresh stock data if available, fallback to cached)
+  const currentProduct = stockData || product;
+  const isStockDataFresh = stockData !== null;
 
   const handleBuyNow = async () => {
     if (!selectedSize) {
@@ -53,6 +109,10 @@ export default function AddToBag({ product }) {
       console.error("Buy now error:", error);
       setBuyNowError(error.message || "Unable to proceed. Please try again.");
       setTimeout(() => setBuyNowError(""), 5000);
+      
+      // Refresh stock data when buy now fails
+      loadFreshStockData();
+      setSelectedSize("");
     }
   };
 
@@ -90,6 +150,31 @@ export default function AddToBag({ product }) {
   return (
     <>
       <div className="space-y-6">
+        {/* Stock Loading Indicator */}
+        {stockLoading && (
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+            <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+            Checking latest stock...
+          </div>
+        )}
+
+        {/* Stock Error */}
+        {stockError && !stockLoading && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-yellow-800 text-sm">
+                Could not load latest stock data. Showing cached information.
+              </p>
+              <button
+                onClick={loadFreshStockData}
+                className="text-yellow-600 hover:text-yellow-800 underline text-sm"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Size Selector */}
         <div id="size-selector">
           <div className="flex items-center justify-between mb-4">
@@ -101,9 +186,11 @@ export default function AddToBag({ product }) {
                 </span>
               )}
             </h3>
-            <button className="text-sm text-gray-500 underline hover:text-gray-700 transition-colors">
-              Size Guide
-            </button>
+            <div className="flex items-center gap-3">
+              <button className="text-sm text-gray-500 underline hover:text-gray-700 transition-colors">
+                Size Guide
+              </button>
+            </div>
           </div>
 
           {(sizeError || buyNowError) && (
@@ -114,11 +201,12 @@ export default function AddToBag({ product }) {
             </div>
           )}
 
-          {/* Size Selector with General Stock Alert */}
+          {/* Size Selector with Fresh Stock Data */}
           <div className="flex flex-wrap gap-2 mb-4">
-            {product.sizes.map((s) => {
+            {currentProduct.sizes.map((s) => {
               const stock = s.availableQty || 0;
               const isOutOfStock = stock === 0;
+              const isLowStock = stock > 0 && stock < 5;
 
               return (
                 <div className="relative" key={s.size._id}>
@@ -126,41 +214,49 @@ export default function AddToBag({ product }) {
                     onClick={() =>
                       !isOutOfStock && handleSizeSelect(s.size.name)
                     }
-                    disabled={isOutOfStock}
+                    disabled={isOutOfStock || stockLoading}
                     className={`
-          px-4 py-3 text-sm font-medium rounded-lg border-2 transition-all duration-200
-          relative
-          ${
-            selectedSize === s.size.name
-              ? "border-gray-900 bg-gray-900 text-white shadow-md transform scale-95"
-              : isOutOfStock
-              ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed opacity-60"
-              : sizeError || buyNowError
-              ? "border-red-300 hover:border-red-400 focus:ring-red-500 text-gray-700 animate-pulse"
-              : "border-gray-200 hover:border-gray-300  text-gray-700 hover:bg-gray-50"
-          }
-          focus:outline-none focus:ring-0
-          min-w-[3rem] text-center
-          ${isOutOfStock ? "line-through" : ""}
-        `}
+                      px-4 py-3 text-sm font-medium rounded-lg border-2 transition-all duration-200
+                      relative
+                      ${
+                        selectedSize === s.size.name
+                          ? "border-gray-900 bg-gray-900 text-white shadow-md transform scale-95"
+                          : isOutOfStock
+                          ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed opacity-60"
+                          : sizeError || buyNowError
+                          ? "border-red-300 hover:border-red-400 focus:ring-red-500 text-gray-700 animate-pulse"
+                          : stockLoading
+                          ? "border-gray-200 bg-gray-50 text-gray-500 cursor-wait"
+                          : "border-gray-200 hover:border-gray-300 text-gray-700 hover:bg-gray-50"
+                      }
+                      focus:outline-none focus:ring-0
+                      min-w-[3rem] text-center
+                      ${isOutOfStock ? "line-through" : ""}
+                    `}
                   >
                     {s.size.name}
+                    {/* Low stock indicator on button */}
+                    {isLowStock && !stockLoading && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-400 rounded-full animate-pulse"></span>
+                    )}
                   </button>
-                  {/* Stock indicator */}
-                  {isOutOfStock && (
+                  
+                  {/* Stock indicators below buttons */}
+                  {isOutOfStock && !stockLoading && (
                     <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
                       <span className="text-xs text-red-500 px-2 py-1 rounded-full">
                         Out
                       </span>
                     </div>
                   )}
+                  
                 </div>
               );
             })}
           </div>
 
-          {/* General Stock Alert */}
-          {product.sizes.some(
+          {/* General Stock Alert - Updated to use fresh data */}
+          {!stockLoading && currentProduct.sizes.some(
             (s) => (s.availableQty || 0) > 0 && (s.availableQty || 0) < 5
           ) && (
             <div className="">
@@ -177,7 +273,7 @@ export default function AddToBag({ product }) {
         <div className="space-y-6">
           <button
             onClick={handleAddToBag}
-            disabled={isAdding || isAdded}
+            disabled={isAdding || isAdded || stockLoading}
             className={`
               w-full py-4 px-6 bg-gray-100 rounded-md font-semibold text-base transition-all duration-300
               relative overflow-hidden group
@@ -186,13 +282,15 @@ export default function AddToBag({ product }) {
                   ? "bg-green-500 text-white transform scale-105"
                   : isAdding
                   ? "bg-gray-400 text-white cursor-wait"
-                  : "text-gray-500 "
+                  : stockLoading
+                  ? "bg-gray-200 text-gray-400 cursor-wait"
+                  : "text-gray-500"
               }
               disabled:cursor-not-allowed
               shadow-xl transform hover:scale-[1.02] active:scale-[0.98]
             `}
           >
-            {/* Cart icon animation - FIXED */}
+            {/* Cart icon animation */}
             {isAdding && (
               <div className="absolute left-6 top-1/2 transform -translate-y-1/2">
                 <div className="relative">
@@ -237,7 +335,9 @@ export default function AddToBag({ product }) {
                 isAdding ? "ml-8" : ""
               } ${isAdded ? "animate-pulse" : ""}`}
             >
-              {isAdded
+              {stockLoading
+                ? "Loading..."
+                : isAdded
                 ? "Added to Bag!"
                 : isAdding
                 ? "Adding..."
@@ -250,15 +350,15 @@ export default function AddToBag({ product }) {
             )}
           </button>
 
-          {/* Buy It Now Button - IMPROVED */}
+          {/* Buy It Now Button */}
           <button
             onClick={handleBuyNow}
-            disabled={buyNowLoading}
+            disabled={buyNowLoading || stockLoading}
             className={`
               w-full py-4 px-6 rounded-md font-semibold text-base transition-all duration-300
               relative overflow-hidden group
               ${
-                buyNowLoading
+                buyNowLoading || stockLoading
                   ? "bg-gray-400 text-white cursor-wait"
                   : "bg-gray-900 text-white hover:bg-black"
               }
@@ -266,7 +366,7 @@ export default function AddToBag({ product }) {
             `}
           >
             {/* icon animation */}
-            {buyNowLoading && (
+            {(buyNowLoading || stockLoading) && (
               <div className="absolute left-6 top-1/2 transform -translate-y-1/2">
                 <div className="relative">
                   <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-400 rounded-full animate-ping"></div>
@@ -276,14 +376,18 @@ export default function AddToBag({ product }) {
 
             <span
               className={`transition-all duration-300 ${
-                buyNowLoading ? "ml-8" : ""
+                buyNowLoading || stockLoading ? "ml-8" : ""
               } flex items-center justify-center gap-2`}
             >
-              {buyNowLoading ? "Processing..." : <span>Buy Now</span>}
+              {stockLoading 
+                ? "Loading..." 
+                : buyNowLoading 
+                ? "Processing..." 
+                : <span>Buy Now</span>}
             </span>
 
             {/* Shimmer effect for enabled state */}
-            {!buyNowLoading && (
+            {!buyNowLoading && !stockLoading && (
               <div className="absolute inset-0 -top-2 -bottom-2 bg-gradient-to-r from-transparent via-white to-transparent opacity-20 transform -skew-x-12 transition-transform duration-1000 hover:translate-x-full" />
             )}
           </button>
@@ -313,7 +417,8 @@ export default function AddToBag({ product }) {
           .animate-shake {
             animation: shake 0.5s ease-in-out;
           }
-           /* Add margin bottom to size selector when stock indicators are present */
+          
+          /* Add margin bottom to size selector when stock indicators are present */
           #size-selector .flex.flex-wrap.gap-2 {
             margin-bottom: 1.5rem;
           }

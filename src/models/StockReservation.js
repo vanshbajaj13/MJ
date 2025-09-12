@@ -174,8 +174,7 @@ stockReservationSchema.statics.getTotalReservedQty = async function (productId, 
         totalReserved: { $sum: "$reservedQty" },
       },
     },
-  ]);
-
+  ]); 
   return result[0]?.totalReserved || 0;
 };
 

@@ -1,18 +1,26 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/dbConnect";
 import { Product, Size } from "@/models";
-import StockReservation from "@/models/StockReservation"; // Import the StockReservation model
+import StockReservation from "@/models/StockReservation";
 
-export async function GET(req, { params }) {
-  const { slug } = await params;
-
+export async function GET(req) {
   await dbConnect();
 
   try {
+    const { searchParams } = new URL(req.url);
+    const slug = searchParams.get("slug");
+
+    if (!slug) {
+      return NextResponse.json(
+        { success: false, error: "Slug is required" },
+        { status: 400 }
+      );
+    }
+
     const product = await Product.findOne({ slug })
       .populate("category")
       .populate("sizes.size")
-      .lean(); // ✅ now it's plain JSON, not Mongoose doc
+      .lean();
 
     if (!product) {
       return NextResponse.json(
@@ -21,25 +29,23 @@ export async function GET(req, { params }) {
       );
     }
 
-    // ✅ Transform sizes array to include availableQty considering reservations
     const sizesWithAvailability = await Promise.all(
       product.sizes.map(async (s) => {
-
-        
-        // Get reserved quantity for this product-size combination
         const reservedQty = await StockReservation.getTotalReservedQty(
           product._id,
-          s.size.name // Handle both populated and unpopulated references
+          s.size.name // works because you populated sizes.size
         );
-        
-        // Calculate available quantity: total - sold - reserved
-        const availableQty = Math.max(0, s.qtyBuy - (s.soldQty || 0) - reservedQty);
+
+        const availableQty = Math.max(
+          0,
+          s.qtyBuy - (s.soldQty || 0) - reservedQty
+        );
 
         return {
           ...s,
           availableQty,
-          qtyBuy: undefined, // hide
-          soldQty: undefined, // hide
+          qtyBuy: undefined,
+          soldQty: undefined,
         };
       })
     );

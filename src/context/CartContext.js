@@ -578,20 +578,22 @@ export function CartProvider({ children }) {
       itemDiscounts = state.appliedCoupon.itemDiscounts || {};
     }
     
-    const shippingCost = 50;
-    const freeShippingThreshold = 500;
+    // no need to inlcude shipping in cart
 
-    let finalShippingCost = 0;
+    // const shippingCost = 50;
+    // const freeShippingThreshold = 500;
 
-    if (subtotal > freeShippingThreshold) {
-      finalShippingCost = 0;
-    } else {
-      finalShippingCost = shippingCost - (shippingDiscount || 0);
-    }
+    // let finalShippingCost = 0;
+
+    // if (subtotal > freeShippingThreshold) {
+    //   finalShippingCost = 0;
+    // } else {
+    //   finalShippingCost = shippingCost - (shippingDiscount || 0);
+    // }
 
     const finalTotal = Math.max(
       0,
-      subtotal - totalDiscount + finalShippingCost
+      subtotal - totalDiscount
     );
 
     return {
