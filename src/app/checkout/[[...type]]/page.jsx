@@ -2,10 +2,11 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCheckout } from "@/context/BuyNowContext"; // Using unified context
+import { useCheckout } from "@/context/BuyNowContext";
 import { useUser } from "@/context/UserContext";
 import CheckoutForm from "@/components/checkout/CheckoutForm";
 import UnifiedOrderSummary from "@/components/checkout/UnifiedOrderSummary";
+import useBlockNavigation from "@/hooks/useBlockNavigation";
 
 export default function UnifiedCheckoutPage() {
   const router = useRouter();
@@ -37,21 +38,23 @@ export default function UnifiedCheckoutPage() {
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const [countdown, setCountdown] = useState(10);
   const [sessionError, setSessionError] = useState(null);
-  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
+
+  // Use the navigation blocking hook
+  const { isAttemptingNavigation, proceedNavigation, cancelNavigation } =
+    useBlockNavigation(true, ["/payment/success", "/payment/failure", "/"]);
 
   // Function to load session
   const loadCheckoutSession = async (sessionId) => {
     try {
-      // console.log('Loading session:', sessionId);
+      setIsLoadingSession(true);
       const result = await loadSession(sessionId);
-      // console.log('Session loaded successfully:', result);
+      setIsLoadingSession(false);
     } catch (error) {
-      // console.error("Error loading session:", error);
+      setIsLoadingSession(false);
       setSessionError(error.message);
-      // Don't redirect immediately, let user see the error
-      setTimeout(() => {
-        router.replace("/?error=session_expired");
-      }, 3000);
+      startRedirectCountdown();
     }
   };
 
@@ -60,30 +63,22 @@ export default function UnifiedCheckoutPage() {
     const sessionParam = searchParams.get("session");
 
     if (sessionParam) {
-      // Only load if we don't already have this session active
       if (!isActive || sessionId !== sessionParam) {
         loadCheckoutSession(sessionParam);
+      } else {
+        // Session is already active and matches the parameter
+        setIsInitialized(true);
       }
     } else {
-      // No session parameter - invalid access
-      setSessionError("No session ID provided");
-      startRedirectCountdown();
+      router.replace("/");
     }
   }, [searchParams, isActive, sessionId]);
 
   // Validate session and initialize
   useEffect(() => {
-    if (!checkoutLoading && !userLoading) {
+    if (!checkoutLoading && !userLoading && !isLoadingSession) {
       const sessionParam = searchParams.get("session");
 
-      // console.log('Validating session:', {
-      //   sessionParam,
-      //   isActive,
-      //   itemsLength: items.length,
-      //   sessionError
-      // });
-
-      // Handle session error
       if (sessionError) {
         setIsInitialized(true);
         return;
@@ -92,7 +87,7 @@ export default function UnifiedCheckoutPage() {
       // Check if session is valid and has items
       if (sessionParam && isActive && items.length > 0) {
         setIsInitialized(true);
-      } 
+      }
       // No session parameter provided
       else if (!sessionParam) {
         setSessionError("No session ID provided");
@@ -101,9 +96,11 @@ export default function UnifiedCheckoutPage() {
       }
       // Session parameter exists but session not loaded or empty
       else if (sessionParam && (!isActive || items.length === 0)) {
-        // Still loading session or session is empty
-        if (!sessionError) {
-          return; // Keep waiting for session to load
+        // If we're not currently loading, then there's an issue
+        if (!isLoadingSession) {
+          setSessionError("Invalid checkout session");
+          startRedirectCountdown();
+          setIsInitialized(true);
         }
       }
       // Fallback - invalid state
@@ -120,6 +117,7 @@ export default function UnifiedCheckoutPage() {
     isActive,
     searchParams,
     sessionError,
+    isLoadingSession,
   ]);
 
   const startRedirectCountdown = () => {
@@ -157,23 +155,36 @@ export default function UnifiedCheckoutPage() {
       finalTotal,
       itemDiscounts,
       clearItems: clearSession,
-      mode: sessionType || "checkout", // Use session type or default
+      mode: sessionType || "checkout",
     };
   };
 
   const activeContext = getActiveContext();
 
   const handleBack = () => {
-    setShowExitConfirmation(true);
+    router.back();
+  };
+
+  const handleConfirmExit = () => {
+    setIsExiting(true);
+    clearSession();
+    proceedNavigation();
   };
 
   // Show loading if still initializing
-  if (!isInitialized || checkoutLoading || userLoading) {
-    return <CheckoutLoadingState />;
+  if (
+    !isInitialized ||
+    checkoutLoading ||
+    userLoading ||
+    isLoadingSession ||
+    isExiting
+  ) {
+    return <CheckoutLoadingState isExiting={isExiting} />;
   }
 
   // Show empty state if no valid session or error
-  if (sessionError || !isActive || items.length === 0) {
+  // 👇 Skip error screen if exiting
+  if (!isExiting && (sessionError || !isActive || items.length === 0)) {
     return (
       <EmptyCheckoutState
         countdown={countdown}
@@ -183,15 +194,6 @@ export default function UnifiedCheckoutPage() {
     );
   }
 
-  const handleConfirmExit = async () => {
-    clearSession();
-    router.back();
-  };
-
-  const handleCancelExit = () => {
-    setShowExitConfirmation(false);
-  };
-
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex flex-col overflow-hidden">
       {/* Header */}
@@ -200,7 +202,7 @@ export default function UnifiedCheckoutPage() {
           <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
           {sessionType && (
             <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-              {sessionType === 'buy_now' ? 'Buy Now' : 'Cart Checkout'}
+              {sessionType === "buy_now" ? "Buy Now" : "Cart Checkout"}
             </span>
           )}
         </div>
@@ -224,9 +226,9 @@ export default function UnifiedCheckoutPage() {
         </button>
       </div>
 
-      {/* Exit Confirmation Modal */}
-      {showExitConfirmation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
+      {/* Navigation Blocking Modal */}
+      {isAttemptingNavigation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full">
             <div className="text-center mb-6">
               <div className="w-16 h-16 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center">
@@ -252,7 +254,10 @@ export default function UnifiedCheckoutPage() {
                 </span>
               </p>
               <p className="text-gray-800 font-medium">
-                Are you sure you want to cancel payment?
+                Are you sure you want to leave?
+              </p>
+              <p className="text-gray-500 text-sm mt-2">
+                Your cart items will be cleared if you leave.
               </p>
             </div>
 
@@ -264,7 +269,7 @@ export default function UnifiedCheckoutPage() {
                 Yes
               </button>
               <button
-                onClick={handleCancelExit}
+                onClick={cancelNavigation}
                 className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
               >
                 No
@@ -276,7 +281,7 @@ export default function UnifiedCheckoutPage() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Order Summary - fixed position, no scrolling */}
+        {/* Order Summary */}
         <div className="order-0 lg:ml-10 lg:block lg:w-96 flex-shrink-0 lg:p-6 lg:pr-0 rounded-b-2xl lg:max-h-[85vh]">
           <UnifiedOrderSummary
             items={activeContext.items}
@@ -297,10 +302,7 @@ export default function UnifiedCheckoutPage() {
 
         {/* Checkout Form */}
         <div className="flex-1 overflow-auto lg:p-6 lg:pt-0 scrollbar-hide">
-          <CheckoutForm
-            context={activeContext}
-            sessionId={sessionId}
-          />
+          <CheckoutForm context={activeContext} sessionId={sessionId} />
         </div>
       </div>
     </div>
@@ -308,113 +310,15 @@ export default function UnifiedCheckoutPage() {
 }
 
 // Professional loading state component
-function CheckoutLoadingState() {
+function CheckoutLoadingState({ isExiting }) {
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex flex-col">
-      {/* Mobile Loading */}
-      <div className="flex items-center justify-center h-screen lg:hidden">
-        <div className="space-y-6 w-full max-w-sm p-4">
-          {/* Mobile Header Skeleton */}
-          <div className="bg-white border-b border-gray-200 p-4 rounded-lg shadow">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-5 h-5 bg-gray-200 rounded animate-pulse" />
-                <div>
-                  <div className="w-24 h-4 bg-gray-200 rounded animate-pulse mb-1" />
-                  <div className="w-16 h-3 bg-gray-200 rounded animate-pulse" />
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="w-20 h-4 bg-gray-200 rounded animate-pulse mb-1" />
-                <div className="w-16 h-3 bg-gray-200 rounded animate-pulse" />
-              </div>
-            </div>
-          </div>
-
-          {/* Mobile Content Skeleton */}
-          <div className="bg-white p-4 rounded-lg shadow space-y-4">
-            <div className="mb-6">
-              <div className="w-32 h-5 bg-gray-200 rounded animate-pulse mb-4" />
-              <div className="w-full h-2 bg-gray-200 rounded animate-pulse" />
-            </div>
-
-            <div className="space-y-4">
-              <div className="w-48 h-6 bg-gray-200 rounded animate-pulse" />
-              <div className="w-full h-12 bg-gray-200 rounded animate-pulse" />
-              <div className="w-full h-12 bg-gray-200 rounded animate-pulse" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Desktop Loading */}
-      <div className="hidden items-center justify-center lg:flex h-full max-w-7xl mx-auto p-6 gap-8">
-        {/* Main Content Skeleton */}
-        <div className="flex-1">
-          <div className="bg-white rounded-xl shadow-sm p-8">
-            {/* Header */}
-            <div className="text-center mb-8">
-              <div className="w-32 h-8 bg-gray-200 rounded animate-pulse mx-auto mb-2" />
-            </div>
-
-            {/* Progress Bar */}
-            <div className="w-full h-2 bg-gray-200 rounded animate-pulse mb-8" />
-
-            {/* Content */}
-            <div className="space-y-6">
-              <div className="w-48 h-6 bg-gray-200 rounded animate-pulse" />
-              <div className="space-y-4">
-                <div className="w-full h-12 bg-gray-200 rounded animate-pulse" />
-                <div className="w-full h-12 bg-gray-200 rounded animate-pulse" />
-                <div className="w-3/4 h-12 bg-gray-200 rounded animate-pulse" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Sidebar Skeleton */}
-        <div className="w-96">
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="w-32 h-6 bg-gray-200 rounded animate-pulse mb-6" />
-
-            {/* Items Skeleton */}
-            <div className="space-y-4 mb-6">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex gap-3">
-                  <div className="w-16 h-16 bg-gray-200 rounded animate-pulse" />
-                  <div className="flex-1 space-y-2">
-                    <div className="w-full h-4 bg-gray-200 rounded animate-pulse" />
-                    <div className="w-3/4 h-3 bg-gray-200 rounded animate-pulse" />
-                    <div className="w-1/2 h-4 bg-gray-200 rounded animate-pulse" />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Price Skeleton */}
-            <div className="border-t pt-4 space-y-2">
-              <div className="flex justify-between">
-                <div className="w-16 h-4 bg-gray-200 rounded animate-pulse" />
-                <div className="w-20 h-4 bg-gray-200 rounded animate-pulse" />
-              </div>
-              <div className="flex justify-between">
-                <div className="w-20 h-4 bg-gray-200 rounded animate-pulse" />
-                <div className="w-12 h-4 bg-gray-200 rounded animate-pulse" />
-              </div>
-              <div className="flex justify-between pt-2 border-t">
-                <div className="w-12 h-5 bg-gray-200 rounded animate-pulse" />
-                <div className="w-24 h-5 bg-gray-200 rounded animate-pulse" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Loading Indicator */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 lg:top-8">
         <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border">
           <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
-          <span className="text-sm text-gray-600">Loading checkout...</span>
+          <span className="text-sm text-gray-600">
+            {isExiting ? "Leaving checkout..." : "Loading checkout..."}
+          </span>
         </div>
       </div>
     </div>

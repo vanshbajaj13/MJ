@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useCart } from "@/context/CartContext";
 import { useRouter } from "next/navigation";
 import { useBuyNow } from "@/context/BuyNowContext";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import CartDrawerPortal from "@/components/Cart/CartDrawerPortal";
 
 export default function AddToBag({ product }) {
@@ -16,7 +16,7 @@ export default function AddToBag({ product }) {
   const [stockData, setStockData] = useState(null);
   const [stockLoading, setStockLoading] = useState(true);
   const [stockError, setStockError] = useState(null);
-  
+
   const router = useRouter();
   const { createBuyNowSession, loading: buyNowLoading } = useBuyNow();
   const { addToCart } = useCart();
@@ -60,13 +60,13 @@ export default function AddToBag({ product }) {
 
   const loadFreshStockData = async () => {
     if (!product?.slug) return;
-    
+
     setStockLoading(true);
     setStockError(null);
-    
+
     try {
       const result = await fetchProductData(product.slug);
-      
+
       if (result.success && result.data) {
         setStockData(result.data);
       } else {
@@ -109,7 +109,7 @@ export default function AddToBag({ product }) {
       console.error("Buy now error:", error);
       setBuyNowError(error.message || "Unable to proceed. Please try again.");
       setTimeout(() => setBuyNowError(""), 5000);
-      
+
       // Refresh stock data when buy now fails
       loadFreshStockData();
       setSelectedSize("");
@@ -150,16 +150,8 @@ export default function AddToBag({ product }) {
   return (
     <>
       <div className="space-y-6">
-        {/* Stock Loading Indicator */}
-        {stockLoading && (
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-            <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
-            Checking latest stock...
-          </div>
-        )}
-
         {/* Stock Error */}
-        {stockError && !stockLoading && (
+        {/* {stockError && !stockLoading && (
           <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-center justify-between">
               <p className="text-yellow-800 text-sm">
@@ -173,7 +165,7 @@ export default function AddToBag({ product }) {
               </button>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Size Selector */}
         <div id="size-selector">
@@ -192,6 +184,50 @@ export default function AddToBag({ product }) {
               </button>
             </div>
           </div>
+
+          {/* Stock Loading Indicator */}
+          <AnimatePresence>
+            {stockLoading && (
+              <motion.div
+                key="loading-indicator"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+              >
+                <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+                  <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                  Checking latest stock...
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Rest of your size selector content goes here */}
+
+          {/* General Stock Alert - Updated to use fresh data */}
+          <AnimatePresence>
+            {!stockLoading &&
+              currentProduct.sizes.some(
+                (s) => (s.availableQty || 0) > 0 && (s.availableQty || 0) < 5
+              ) && (
+                <motion.div
+                  key="low-stock-alert"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex items-center gap-2">
+                    <p className="text-red-500 text-sm font-medium">
+                      Hurry, only few left!
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+          </AnimatePresence>
 
           {(sizeError || buyNowError) && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg animate-shake">
@@ -240,7 +276,7 @@ export default function AddToBag({ product }) {
                       <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-400 rounded-full animate-pulse"></span>
                     )}
                   </button>
-                  
+
                   {/* Stock indicators below buttons */}
                   {isOutOfStock && !stockLoading && (
                     <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
@@ -249,24 +285,10 @@ export default function AddToBag({ product }) {
                       </span>
                     </div>
                   )}
-                  
                 </div>
               );
             })}
           </div>
-
-          {/* General Stock Alert - Updated to use fresh data */}
-          {!stockLoading && currentProduct.sizes.some(
-            (s) => (s.availableQty || 0) > 0 && (s.availableQty || 0) < 5
-          ) && (
-            <div className="">
-              <div className="flex items-center gap-2">
-                <p className="text-red-500 text-sm font-medium">
-                  Hurry, only few left!
-                </p>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Add to Cart Button */}
@@ -379,11 +401,13 @@ export default function AddToBag({ product }) {
                 buyNowLoading || stockLoading ? "ml-8" : ""
               } flex items-center justify-center gap-2`}
             >
-              {stockLoading 
-                ? "Loading..." 
-                : buyNowLoading 
-                ? "Processing..." 
-                : <span>Buy Now</span>}
+              {stockLoading ? (
+                "Loading..."
+              ) : buyNowLoading ? (
+                "Processing..."
+              ) : (
+                <span>Buy Now</span>
+              )}
             </span>
 
             {/* Shimmer effect for enabled state */}
@@ -417,7 +441,7 @@ export default function AddToBag({ product }) {
           .animate-shake {
             animation: shake 0.5s ease-in-out;
           }
-          
+
           /* Add margin bottom to size selector when stock indicators are present */
           #size-selector .flex.flex-wrap.gap-2 {
             margin-bottom: 1.5rem;

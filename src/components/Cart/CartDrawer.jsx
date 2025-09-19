@@ -897,7 +897,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                             }}
                             className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
                           />
-                          Creating Session...
+                          Processing...
                         </div>
                       ) : (
                         "Proceed to Checkout"
