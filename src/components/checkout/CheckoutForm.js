@@ -1,33 +1,16 @@
+// src/components/checkout/CheckoutForm.js - Updated with new components
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "@/context/CartContext";
+import AddressStep from "./AddressStep";
+import PaymentStep from "./PaymentStep";
 
 const CHECKOUT_STEPS = {
   VERIFICATION: 1,
   ADDRESS: 2,
   PAYMENT: 3,
 };
-
-// Loading skeleton for saved addresses
-const AddressCardSkeleton = () => (
-  <div className="animate-pulse">
-    <div className="p-4 border-2 border-gray-200 rounded-xl">
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex items-center gap-2">
-          <div className="h-5 bg-gray-200 rounded w-32"></div>
-          <div className="h-5 bg-gray-100 rounded w-12"></div>
-        </div>
-        <div className="w-6 h-6 bg-gray-200 rounded-full"></div>
-      </div>
-      <div className="space-y-2">
-        <div className="h-4 bg-gray-200 rounded w-full"></div>
-        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-        <div className="h-4 bg-gray-100 rounded w-1/2"></div>
-      </div>
-    </div>
-  </div>
-);
 
 // Initial loading component
 const InitialLoader = () => (
@@ -76,9 +59,13 @@ export default function UnifiedCheckoutForm({
   user,
   clearCart,
   onBack,
+  sessionId,
+  context,
   mobile = false,
 }) {
-const { appliedCoupon, discountAmount } = useCart();
+  console.log(context);
+  
+  const { appliedCoupon, discountAmount } = useCart();
 
   // Session and initialization state
   const [isInitializing, setIsInitializing] = useState(true);
@@ -103,28 +90,7 @@ const { appliedCoupon, discountAmount } = useCart();
   const otpRefs = useRef([]);
 
   // Address step state
-  const [addressFormData, setAddressFormData] = useState({
-    fullName: "",
-    email: "",
-    addressLine1: "",
-    addressLine2: "",
-    city: "",
-    state: "",
-    pincode: "",
-    landmark: "",
-    addressType: "home",
-  });
-  const [addressErrors, setAddressErrors] = useState({});
-  const [savedAddresses, setSavedAddresses] = useState([]);
   const [selectedAddress, setSelectedAddress] = useState(null);
-  const [showAddressForm, setShowAddressForm] = useState(false);
-  const [isAddingAddress, setIsAddingAddress] = useState(false);
-  const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
-  const contentRef = useRef(null);
-  const [formHeight, setFormHeight] = useState("0px");
-
-  // Payment state
-  const [paymentMethod, setPaymentMethod] = useState("razorpay");
 
   // Timer for resend OTP
   useEffect(() => {
@@ -136,15 +102,6 @@ const { appliedCoupon, discountAmount } = useCart();
     }
     return () => clearInterval(interval);
   }, [resendTimer]);
-
-  // Update form height for address form
-  useEffect(() => {
-    if (contentRef.current) {
-      setFormHeight(
-        showAddressForm ? `${contentRef.current.scrollHeight}px` : "0px"
-      );
-    }
-  }, [showAddressForm, addressFormData, addressErrors]);
 
   // Enhanced session check on mount with proper state management
   useEffect(() => {
@@ -169,9 +126,6 @@ const { appliedCoupon, discountAmount } = useCart();
             setPhoneNumber(data.phoneNumber.replace("+91", ""));
             setPhoneStep("otp");
             setCurrentStep(CHECKOUT_STEPS.ADDRESS);
-
-            // Pre-load addresses in background
-            loadSavedAddresses(data.phoneNumber);
           } else {
             // No valid session - start from verification
             setCurrentStep(CHECKOUT_STEPS.VERIFICATION);
@@ -224,37 +178,6 @@ const { appliedCoupon, discountAmount } = useCart();
       setValidationLoading(false);
     }
   };
-
-  // Load saved addresses with loading state
-  const loadSavedAddresses = async (phoneNumber = verifiedPhone) => {
-    if (!phoneNumber) return;
-
-    try {
-      setIsLoadingAddresses(true);
-      const response = await fetch(
-        `/api/user/addresses?phone=${encodeURIComponent(phoneNumber)}`
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setSavedAddresses(data.addresses || []);
-      }
-    } catch (error) {
-      console.error("Failed to load addresses:", error);
-    } finally {
-      setIsLoadingAddresses(false);
-    }
-  };
-
-  // Load addresses when phone is verified (but not during initial session check)
-  useEffect(() => {
-    if (
-      verifiedPhone &&
-      sessionCheckComplete &&
-      currentStep >= CHECKOUT_STEPS.ADDRESS
-    ) {
-      loadSavedAddresses();
-    }
-  }, [verifiedPhone, sessionCheckComplete, currentStep]);
 
   // Show loading screen during initialization
   if (isInitializing || !sessionCheckComplete) {
@@ -416,172 +339,6 @@ const { appliedCoupon, discountAmount } = useCart();
     }
   };
 
-  // Address functions
-  const validateAddressForm = () => {
-    const newErrors = {};
-
-    if (!addressFormData.fullName.trim()) {
-      newErrors.fullName = "Full name is required";
-    }
-
-    if (!addressFormData.email.trim()) {
-      newErrors.email = "Email is required";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addressFormData.email)) {
-      newErrors.email = "Please enter a valid email address";
-    }
-
-    if (!addressFormData.addressLine1.trim()) {
-      newErrors.addressLine1 = "Address line 1 is required";
-    }
-
-    if (!addressFormData.city.trim()) {
-      newErrors.city = "City is required";
-    }
-
-    if (!addressFormData.state.trim()) {
-      newErrors.state = "State is required";
-    }
-
-    if (!addressFormData.pincode.trim()) {
-      newErrors.pincode = "PIN code is required";
-    } else if (!/^\d{6}$/.test(addressFormData.pincode)) {
-      newErrors.pincode = "Please enter a valid 6-digit PIN code";
-    }
-
-    setAddressErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleAddressInputChange = (field, value) => {
-    setAddressFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-
-    if (addressErrors[field]) {
-      setAddressErrors((prev) => ({
-        ...prev,
-        [field]: "",
-      }));
-    }
-  };
-
-  const handleAddressSelect = (address) => {
-    setSelectedAddress(address);
-    setShowAddressForm(false);
-  };
-
-  const handleAddNewAddress = () => {
-    setSelectedAddress(null);
-    setAddressFormData({
-      fullName: "",
-      email: "",
-      addressLine1: "",
-      addressLine2: "",
-      city: "",
-      state: "",
-      pincode: "",
-      landmark: "",
-      addressType: "home",
-    });
-    setAddressErrors({});
-    setShowAddressForm((prev) => !prev);
-  };
-
-  const handleAddressFormSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!validateAddressForm()) {
-      return;
-    }
-
-    setIsAddingAddress(true);
-
-    try {
-      const addressData = {
-        ...addressFormData,
-        phoneNumber: verifiedPhone,
-      };
-
-      const response = await fetch("/api/user/addresses", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(addressData),
-      });
-
-      if (response.ok) {
-        const savedAddress = await response.json();
-        setSavedAddresses((prev) => [...prev, savedAddress.address]);
-        setSelectedAddress(savedAddress.address);
-        setShowAddressForm(false);
-        setAddressFormData({
-          fullName: "",
-          email: "",
-          addressLine1: "",
-          addressLine2: "",
-          city: "",
-          state: "",
-          pincode: "",
-          landmark: "",
-          addressType: "home",
-        });
-        setAddressErrors({});
-      } else {
-        console.error("Failed to save address");
-      }
-    } catch (error) {
-      console.error("Address save error:", error);
-    } finally {
-      setIsAddingAddress(false);
-    }
-  };
-
-  // Enhanced payment handler with validation
-  const handlePayment = async () => {
-    setLoading(true);
-
-    try {
-      // Final validation before payment
-      const isValid = await validateCheckout();
-      if (!isValid) {
-        setLoading(false);
-        return;
-      }
-
-      // Use validated pricing for payment
-      const finalAmount = validatedPricing.finalTotal;
-
-      const orderData = {
-        shippingAddress: selectedAddress,
-        paymentMethod,
-        // Server will re-validate everything
-      };
-
-      const response = await fetch("/api/orders/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(orderData),
-      });
-
-      if (response.ok) {
-        const order = await response.json();
-        clearCart();
-        window.location.href = `/order-confirmation?orderId=${order.order.orderId}`;
-      } else {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to create order");
-      }
-    } catch (error) {
-      console.error("Payment error:", error);
-      alert(`Payment failed: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Show validation errors if any
   if (validationErrors.length > 0) {
     return (
@@ -627,49 +384,20 @@ const { appliedCoupon, discountAmount } = useCart();
     setCurrentStep(step);
     if (step === CHECKOUT_STEPS.VERIFICATION) {
       setPhoneError("");
-    } else if (step === CHECKOUT_STEPS.ADDRESS) {
-      setAddressErrors({});
     }
   };
 
-  const indianStates = [
-    "Andhra Pradesh",
-    "Arunachal Pradesh",
-    "Assam",
-    "Bihar",
-    "Chhattisgarh",
-    "Goa",
-    "Gujarat",
-    "Haryana",
-    "Himachal Pradesh",
-    "Jharkhand",
-    "Karnataka",
-    "Kerala",
-    "Madhya Pradesh",
-    "Maharashtra",
-    "Manipur",
-    "Meghalaya",
-    "Mizoram",
-    "Nagaland",
-    "Odisha",
-    "Punjab",
-    "Rajasthan",
-    "Sikkim",
-    "Tamil Nadu",
-    "Telangana",
-    "Tripura",
-    "Uttar Pradesh",
-    "Uttarakhand",
-    "West Bengal",
-    "Andaman and Nicobar Islands",
-    "Chandigarh",
-    "Dadra and Nagar Haveli and Daman and Diu",
-    "Lakshadweep",
-    "Delhi",
-    "Puducherry",
-    "Ladakh",
-    "Jammu and Kashmir",
-  ];
+  // Handle address step completion
+  const handleAddressStepComplete = (address) => {
+    setSelectedAddress(address);
+    setCurrentStep(CHECKOUT_STEPS.PAYMENT);
+  };
+
+  // Handle payment success
+  const handlePaymentSuccess = (result) => {
+    clearCart();
+    window.location.href = `/order-confirmation?orderId=${result.orderId}`;
+  };
 
   // Render phone verification step
   const renderPhoneVerification = () => (
@@ -720,7 +448,7 @@ const { appliedCoupon, discountAmount } = useCart();
                       setPhoneError("");
                     }}
                     placeholder="98765 43210"
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-r-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                     maxLength={11}
                   />
                 </div>
@@ -743,7 +471,7 @@ const { appliedCoupon, discountAmount } = useCart();
                 className={`w-full py-3 px-4 rounded-lg font-medium transition-all ${
                   loading
                     ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-gray-900 hover:bg-gray-800"
+                    : "bg-blue-600 hover:bg-blue-700"
                 } text-white`}
               >
                 {loading ? (
@@ -815,7 +543,7 @@ const { appliedCoupon, discountAmount } = useCart();
                     value={digit}
                     onChange={(e) => handleOtpChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                    className="w-10 h-12 text-center text-lg font-bold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
+                    className="w-10 h-12 text-center text-lg font-bold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                     maxLength={1}
                   />
                 ))}
@@ -843,7 +571,7 @@ const { appliedCoupon, discountAmount } = useCart();
                   <button
                     onClick={handleResendOtp}
                     disabled={isResending}
-                    className="text-sm text-gray-900 font-medium hover:underline disabled:opacity-50"
+                    className="text-sm text-blue-600 font-medium hover:underline disabled:opacity-50"
                   >
                     {isResending ? "Resending..." : "Resend OTP"}
                   </button>
@@ -876,7 +604,7 @@ const { appliedCoupon, discountAmount } = useCart();
                         repeat: Infinity,
                         ease: "linear",
                       }}
-                      className="rounded-full h-4 w-4 border-2 border-gray-400 border-t-gray-900 mr-2"
+                      className="rounded-full h-4 w-4 border-2 border-gray-400 border-t-blue-600 mr-2"
                     />
                     Verifying...
                   </div>
@@ -889,893 +617,35 @@ const { appliedCoupon, discountAmount } = useCart();
     </div>
   );
 
-  // Enhanced address step with better UI and loading states
-  const renderAddressStep = () => (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* Saved Addresses Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="space-y-4"
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Select Delivery Address
-          </h3>
-          {!isLoadingAddresses && savedAddresses.length > 0 && (
-            <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-              {savedAddresses.length} saved address
-              {savedAddresses.length > 1 ? "es" : ""}
-            </span>
-          )}
-        </div>
-
-        {/* Loading State for Addresses */}
-        {isLoadingAddresses ? (
-          <div className="space-y-4">
-            <div className="flex items-center justify-center py-8">
-              <div className="flex items-center text-gray-600">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{
-                    duration: 1,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
-                  className="rounded-full h-5 w-5 border-2 border-gray-400 border-t-gray-900 mr-3"
-                />
-                <span className="text-sm">Loading your saved addresses...</span>
-              </div>
-            </div>
-            {[1, 2].map((i) => (
-              <AddressCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : savedAddresses.length > 0 ? (
-          /* Saved Addresses List */
-          <div className="space-y-3">
-            {savedAddresses.map((address, index) => (
-              <motion.div
-                key={address._id || index}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-                className={`group relative p-5 border-2 rounded-2xl cursor-pointer transition-all duration-300 ${
-                  selectedAddress?._id === address._id
-                    ? "border-gray-900 bg-gradient-to-br from-gray-50 to-white shadow-lg ring-1 ring-gray-900/5"
-                    : "border-gray-200 hover:border-gray-300 hover:shadow-md hover:bg-gray-50/50"
-                }`}
-                onClick={() => handleAddressSelect(address)}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                {/* Selection Indicator */}
-                {selectedAddress?._id === address._id && (
-                  <div className="absolute bottom-4 right-4 w-6 h-6 bg-green-100  rounded-full flex items-center justify-center shadow-sm">
-                    <motion.svg
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="w-4 h-4 text-green-500"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clipRule="evenodd"
-                      />
-                    </motion.svg>
-                  </div>
-                )}
-                <div className="absolute top-4 right-4 w-6 h-6  rounded-full flex items-center justify-center shadow-sm">
-                  <span
-                    className={`text-xs font-medium px-2 py-1 rounded-full capitalize bg-gray-400 text-white`}
-                  >
-                    {address.addressType}
-                  </span>
-                </div>
-
-                <div className="pr-8">
-                  {/* Header with name and type */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="flex items-center gap-2">
-                      <svg
-                        className="w-4 h-4 text-gray-500"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                        />
-                      </svg>
-                      <p className="font-semibold text-gray-900 text-lg">
-                        {address.fullName}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Address Details */}
-                  <div className="space-y-2">
-                    <p className="text-gray-700 leading-relaxed">
-                      <span className="inline-flex items-center gap-1 mb-1">
-                        <svg
-                          className="w-4 h-4 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
-                      </span>
-                      {address.addressLine1}
-                      {address.addressLine2 && `, ${address.addressLine2}`}
-                      <br />
-                      {address.city}, {address.state} -{" "}
-                      <span className="font-medium">{address.pincode}</span>
-                    </p>
-
-                    {/* {address.landmark && (
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2v16z" />
-                        </svg>
-                        <span className="font-medium">Landmark:</span> {address.landmark}
-                      </p>
-                    )} */}
-
-                    {/* <p className="text-sm text-gray-500 flex items-center gap-1">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                      {address.email}
-                    </p> */}
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          /* No Addresses Found */
-          <div className="text-center py-8">
-            <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-              <svg
-                className="w-8 h-8 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-            </div>
-            <p className="text-gray-600 mb-2">No saved addresses found</p>
-            <p className="text-sm text-gray-500">
-              Add your first delivery address below
-            </p>
-          </div>
-        )}
-      </motion.div>
-
-      {/* Add New Address Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200"
-      >
-        <div
-          onClick={handleAddNewAddress}
-          className="flex items-center justify-between p-5 cursor-pointer hover:bg-gray-50 transition-colors group"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-50 rounded-full flex items-center justify-center group-hover:from-gray-200 group-hover:to-gray-100 transition-all duration-200">
-              <svg
-                className="w-5 h-5 text-gray-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                />
-              </svg>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-900 text-lg">
-                Add New Address
-              </p>
-              <p className="text-sm text-gray-500">
-                {savedAddresses.length === 0
-                  ? "Add your delivery address to continue"
-                  : "Save address for future orders"}
-              </p>
-            </div>
-          </div>
-
-          <div className="relative w-5 h-5">
-            <span
-              className={`ico-plus ${showAddressForm ? "open" : ""}`}
-              style={{ color: "#6B7280" }}
-            />
-          </div>
-        </div>
-
-        {/* Address Form */}
-        <div
-          ref={contentRef}
-          style={{ maxHeight: formHeight }}
-          className="overflow-hidden transition-all duration-700 ease-in-out"
-        >
-          <div className="border-t border-gray-100 p-6 bg-gray-50/30">
-            <form onSubmit={handleAddressFormSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={addressFormData.fullName}
-                    onChange={(e) =>
-                      handleAddressInputChange("fullName", e.target.value)
-                    }
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.fullName
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-300 bg-white"
-                    }`}
-                    placeholder="Enter your full name"
-                  />
-                  {addressErrors.fullName && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      {addressErrors.fullName}
-                    </motion.p>
-                  )}
-                </div>
-
-                <div className="md:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address *
-                  </label>
-                  <input
-                    type="email"
-                    value={addressFormData.email}
-                    onChange={(e) =>
-                      handleAddressInputChange("email", e.target.value)
-                    }
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.email
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-300 bg-white"
-                    }`}
-                    placeholder="Enter your email address"
-                  />
-                  {addressErrors.email && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      {addressErrors.email}
-                    </motion.p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Address Line 1 *
-                </label>
-                <input
-                  type="text"
-                  value={addressFormData.addressLine1}
-                  onChange={(e) =>
-                    handleAddressInputChange("addressLine1", e.target.value)
-                  }
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                    addressErrors.addressLine1
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-300 bg-white"
-                  }`}
-                  placeholder="House number, building name, street"
-                />
-                {addressErrors.addressLine1 && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-red-600 text-sm mt-1 flex items-center gap-1"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    {addressErrors.addressLine1}
-                  </motion.p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Address Line 2 (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={addressFormData.addressLine2}
-                  onChange={(e) =>
-                    handleAddressInputChange("addressLine2", e.target.value)
-                  }
-                  className="w-full px-4 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
-                  placeholder="Area, locality, sector"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    City *
-                  </label>
-                  <input
-                    type="text"
-                    value={addressFormData.city}
-                    onChange={(e) =>
-                      handleAddressInputChange("city", e.target.value)
-                    }
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.city
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-300 bg-white"
-                    }`}
-                    placeholder="Enter city"
-                  />
-                  {addressErrors.city && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      {addressErrors.city}
-                    </motion.p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    State *
-                  </label>
-                  <select
-                    value={addressFormData.state}
-                    onChange={(e) =>
-                      handleAddressInputChange("state", e.target.value)
-                    }
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.state
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-300 bg-white"
-                    }`}
-                  >
-                    <option value="">Select State</option>
-                    {indianStates.map((state) => (
-                      <option key={state} value={state}>
-                        {state}
-                      </option>
-                    ))}
-                  </select>
-                  {addressErrors.state && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      {addressErrors.state}
-                    </motion.p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    PIN Code *
-                  </label>
-                  <input
-                    type="text"
-                    value={addressFormData.pincode}
-                    onChange={(e) =>
-                      handleAddressInputChange(
-                        "pincode",
-                        e.target.value.replace(/\D/g, "").slice(0, 6)
-                      )
-                    }
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all ${
-                      addressErrors.pincode
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-300 bg-white"
-                    }`}
-                    placeholder="123456"
-                    maxLength={6}
-                  />
-                  {addressErrors.pincode && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-600 text-sm mt-1 flex items-center gap-1"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      {addressErrors.pincode}
-                    </motion.p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Address Type
-                  </label>
-                  <select
-                    value={addressFormData.addressType}
-                    onChange={(e) =>
-                      handleAddressInputChange("addressType", e.target.value)
-                    }
-                    className="w-full px-4 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
-                  >
-                    <option value="home">🏠 Home</option>
-                    <option value="office">🏢 Office</option>
-                    <option value="other">📍 Other</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Landmark (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={addressFormData.landmark}
-                  onChange={(e) =>
-                    handleAddressInputChange("landmark", e.target.value)
-                  }
-                  className="w-full px-4 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none transition-all"
-                  placeholder="Near hospital, mall, etc."
-                />
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddressForm(false);
-                    setAddressErrors({});
-                  }}
-                  className="w-full sm:w-auto px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={isAddingAddress}
-                  className={`flex-1 sm:flex-none sm:px-8 py-3 rounded-lg font-medium transition-all ${
-                    isAddingAddress
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-gray-900 hover:bg-gray-800"
-                  } text-white`}
-                >
-                  {isAddingAddress ? (
-                    <div className="flex items-center justify-center">
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{
-                          duration: 1,
-                          repeat: Infinity,
-                          ease: "linear",
-                        }}
-                        className="rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"
-                      />
-                      Saving Address...
-                    </div>
-                  ) : (
-                    "Save Address"
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        <style jsx>{`
-          .ico-plus {
-            position: relative;
-            width: 20px;
-            height: 20px;
-            display: inline-block;
-            flex-shrink: 0;
-          }
-
-          .ico-plus::before,
-          .ico-plus::after {
-            content: "";
-            position: absolute;
-            background-color: currentColor;
-            transition: all 0.3s ease;
-          }
-
-          .ico-plus::before {
-            width: 20px;
-            height: 2px;
-            top: 9px;
-            left: 0;
-          }
-
-          .ico-plus::after {
-            width: 2px;
-            height: 20px;
-            left: 9px;
-            top: 0;
-          }
-
-          .ico-plus.open::after {
-            transform: rotate(90deg);
-            opacity: 0;
-          }
-        `}</style>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col sm:flex-row gap-4 pt-6"
-      >
-        <motion.button
-          type="button"
-          onClick={() => {
-            setPhoneStep("phone");
-            setOtp(["", "", "", "", "", ""]);
-            setPhoneError("");
-            setResendTimer(0);
-            handleBackToStep(CHECKOUT_STEPS.VERIFICATION);
-          }}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="w-full sm:w-auto px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          Back
-        </motion.button>
-        {selectedAddress && (
-          <motion.button
-            onClick={() => setCurrentStep(CHECKOUT_STEPS.PAYMENT)}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="flex-1 sm:flex-none sm:px-8 py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-lg font-medium transition-colors"
-          >
-            Continue to Payment
-          </motion.button>
-        )}
-      </motion.div>
-
-      {!selectedAddress && savedAddresses.length > 0 && (
-        <div className="text-center text-sm text-gray-500 pt-4">
-          Please select an existing address or add a new one to continue
-        </div>
-      )}
-    </div>
-  );
-
-  // Render payment step
-   const renderPaymentStep = () => (
-    <div className="max-w-2xl mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="space-y-8"
-      >
-        <div className="bg-gray-50 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Order Summary
-          </h3>
-
-          {/* Customer & Address Info */}
-          <div className="mb-4 pb-4 border-b border-gray-200">
-            <p className="font-medium text-gray-900">
-              {selectedAddress.fullName}
-            </p>
-            <p className="text-sm text-gray-600">{verifiedPhone}</p>
-            <p className="text-sm text-gray-600">{selectedAddress.email}</p>
-          </div>
-
-          <div className="mb-4 pb-4 border-b border-gray-200">
-            <h4 className="font-medium text-gray-900 mb-2">Shipping Address</h4>
-            <div className="text-sm text-gray-600">
-              <p>{selectedAddress.addressLine1}</p>
-              {selectedAddress.addressLine2 && (
-                <p>{selectedAddress.addressLine2}</p>
-              )}
-              <p>
-                {selectedAddress.city}, {selectedAddress.state} -{" "}
-                {selectedAddress.pincode}
-              </p>
-            </div>
-          </div>
-
-          {/* Items */}
-          <div className="space-y-3 mb-4 pb-4 border-b border-gray-200">
-            {items.map((item) => (
-              <div
-                key={`${item.productId}-${item.size}`}
-                className="flex justify-between items-center"
-              >
-                <div>
-                  <p className="font-medium text-gray-900">{item.name}</p>
-                  <p className="text-sm text-gray-600">
-                    Size: {item.size} • Qty: {item.quantity}
-                  </p>
-                </div>
-                <p className="font-semibold text-gray-900">
-                  ₹{(item.price * item.quantity).toFixed(2)}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {/* Pricing Breakdown */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Subtotal</span>
-              <span className="text-gray-900">₹{(totalPrice + (discountAmount || 0)).toFixed(2)}</span>
-            </div>
-            
-            {appliedCoupon && discountAmount > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Discount ({appliedCoupon.code})</span>
-                <span className="text-green-600">-₹{discountAmount.toFixed(2)}</span>
-              </div>
-            )}
-            
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Shipping</span>
-              <span className="text-green-600">Free</span>
-            </div>
-            
-            <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-lg">
-              <span className="text-gray-900">Total</span>
-              <span className="text-gray-900">₹{totalPrice.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Payment Method Selection */}
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Payment Method
-          </h3>
-          <div className="space-y-3">
-            <label className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-              <input
-                type="radio"
-                name="payment"
-                value="razorpay"
-                checked={paymentMethod === "razorpay"}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="mr-4"
-              />
-              <div className="flex items-center">
-                <div className="w-12 h-8 bg-blue-600 rounded mr-3 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">PAY</span>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">Online Payment</p>
-                  <p className="text-sm text-gray-600">
-                    Pay securely with UPI, Card, or Net Banking
-                  </p>
-                </div>
-              </div>
-            </label>
-
-            <label className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-              <input
-                type="radio"
-                name="payment"
-                value="cod"
-                checked={paymentMethod === "cod"}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="mr-4"
-              />
-              <div className="flex items-center">
-                <div className="w-12 h-8 bg-green-600 rounded mr-3 flex items-center justify-center">
-                  <svg
-                    className="w-4 h-4 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">Cash on Delivery</p>
-                  <p className="text-sm text-gray-600">
-                    Pay when your order is delivered
-                  </p>
-                </div>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        {/* Security Notice */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <svg
-              className="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <div>
-              <p className="font-medium text-blue-900 mb-1">Secure Payment</p>
-              <p className="text-sm text-blue-800">
-                Your payment information is encrypted and secure. We never store
-                your card details.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 pt-6">
-          <motion.button
-            type="button"
-            onClick={() => handleBackToStep(CHECKOUT_STEPS.ADDRESS)}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="w-full sm:w-auto px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Back to Address
-          </motion.button>
-
-          <motion.button
-            onClick={handlePayment}
-            disabled={loading}
-            whileHover={{ scale: loading ? 1 : 1.02 }}
-            whileTap={{ scale: loading ? 1 : 0.98 }}
-            className={`flex-1 sm:flex-none sm:px-8 py-3 rounded-lg font-medium transition-all ${
-              loading
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-gray-900 hover:bg-gray-800"
-            } text-white`}
-          >
-            {loading ? (
-              <div className="flex items-center justify-center">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  className="rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"
-                />
-                Processing...
-              </div>
-            ) : (
-              <>
-                {paymentMethod === "cod"
-                  ? "Place Order"
-                  : `Pay ₹${totalPrice.toFixed(2)}`}
-              </>
-            )}
-          </motion.button>
-        </div>
-      </motion.div>
-    </div>
-  );
-
   const renderCurrentStep = () => {
     switch (currentStep) {
       case CHECKOUT_STEPS.VERIFICATION:
         return renderPhoneVerification();
       case CHECKOUT_STEPS.ADDRESS:
-        return renderAddressStep();
+        return (
+          <AddressStep
+            verifiedPhone={verifiedPhone}
+            onContinue={handleAddressStepComplete}
+            onBack={() => {
+              setPhoneStep("phone");
+              setOtp(["", "", "", "", "", ""]);
+              setPhoneError("");
+              setResendTimer(0);
+              handleBackToStep(CHECKOUT_STEPS.VERIFICATION);
+            }}
+          />
+        );
       case CHECKOUT_STEPS.PAYMENT:
-        return renderPaymentStep();
+        return (
+          <PaymentStep
+            selectedAddress={selectedAddress}
+            sessionId={sessionId}
+            items={items}
+            verifiedPhone={verifiedPhone}
+            onBack={() => handleBackToStep(CHECKOUT_STEPS.ADDRESS)}
+            onPaymentSuccess={handlePaymentSuccess}
+          />
+        );
       default:
         return null;
     }
@@ -1802,8 +672,6 @@ const { appliedCoupon, discountAmount } = useCart();
           setOtp(["", "", "", "", "", ""]);
           setPhoneError("");
           setResendTimer(0);
-        } else if (stepKey === CHECKOUT_STEPS.ADDRESS) {
-          setAddressErrors({});
         }
         handleBackToStep(stepKey);
       }
@@ -1822,15 +690,15 @@ const { appliedCoupon, discountAmount } = useCart();
                 onClick={() => handleStepClick(step.key)}
               >
                 <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
                     status === "completed"
                       ? "bg-green-500 text-white"
                       : status === "current"
-                      ? "bg-gray-900 text-white"
+                      ? "bg-blue-600 text-white"
                       : "bg-gray-200 text-gray-400"
                   } ${
                     canNavigateBack
-                      ? "cursor-pointer hover:underline hover:text-green-700"
+                      ? "cursor-pointer hover:scale-110"
                       : ""
                   }`}
                 >
@@ -1855,11 +723,11 @@ const { appliedCoupon, discountAmount } = useCart();
                     status === "completed"
                       ? "text-green-600"
                       : status === "current"
-                      ? "text-gray-900"
+                      ? "text-blue-600"
                       : "text-gray-400"
                   } ${
                     canNavigateBack
-                      ? "cursor-pointer hover:underline hover:text-green-700"
+                      ? "cursor-pointer hover:underline"
                       : ""
                   }`}
                 >
@@ -1871,22 +739,22 @@ const { appliedCoupon, discountAmount } = useCart();
                 <div className="flex items-center mx-2 md:mx-4">
                   <div className="flex space-x-1">
                     <div
-                      className={`w-1 h-1 rounded-full ${
+                      className={`w-1 h-1 rounded-full transition-colors ${
                         status === "completed" ? "bg-green-400" : "bg-gray-300"
                       }`}
                     ></div>
                     <div
-                      className={`w-1 h-1 rounded-full ${
+                      className={`w-1 h-1 rounded-full transition-colors ${
                         status === "completed" ? "bg-green-400" : "bg-gray-300"
                       }`}
                     ></div>
                     <div
-                      className={`w-1 h-1 rounded-full ${
+                      className={`w-1 h-1 rounded-full transition-colors ${
                         status === "completed" ? "bg-green-400" : "bg-gray-300"
                       }`}
                     ></div>
                     <div
-                      className={`w-1 h-1 rounded-full ${
+                      className={`w-1 h-1 rounded-full transition-colors ${
                         status === "completed" ? "bg-green-400" : "bg-gray-300"
                       }`}
                     ></div>

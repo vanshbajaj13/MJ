@@ -151,6 +151,32 @@ const checkoutSessionSchema = new mongoose.Schema(
       default: () => new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
       index: { expireAfterSeconds: 0 },
     },
+    razorpayOrderId: {
+    type: String,
+    default: null,
+    index: true  // Important for verification lookup
+  },
+  validatedAt: {
+    type: Date,
+    default: null
+  },
+  validatedAddress: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  paymentInitiatedAt: {
+    type: Date,
+    default: null
+  },
+  completedAt: {
+    type: Date,
+    default: null
+  },
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order',
+    default: null
+  },
   },
   {
     timestamps: true,

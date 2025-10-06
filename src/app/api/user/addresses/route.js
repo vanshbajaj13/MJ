@@ -6,7 +6,6 @@ import { verifyCheckoutSession } from '@/lib/middleware/checkoutAuth';
 // GET - Fetch addresses for a phone number
 export async function GET(request) {
   try {
-    // Verify checkout session
     const verification = await verifyCheckoutSession(request);
     if (!verification.verified) {
       return NextResponse.json(
@@ -18,7 +17,6 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const phone = searchParams.get('phone');
 
-    // Ensure the phone number matches the verified session
     if (!phone || phone !== verification.phoneNumber) {
       return NextResponse.json(
         { error: 'Invalid phone number' },
@@ -27,12 +25,9 @@ export async function GET(request) {
     }
 
     await dbConnect();
-
     const addresses = await Address.getAddressesByPhone(phone);
 
-    return NextResponse.json({
-      addresses,
-    });
+    return NextResponse.json({ addresses });
 
   } catch (error) {
     console.error('Get addresses error:', error);
@@ -46,7 +41,6 @@ export async function GET(request) {
 // POST - Save a new address
 export async function POST(request) {
   try {
-    // Verify checkout session
     const verification = await verifyCheckoutSession(request);
     if (!verification.verified) {
       return NextResponse.json(
@@ -70,7 +64,6 @@ export async function POST(request) {
       addressType = 'home',
     } = addressData;
 
-    // Ensure the phone number matches the verified session
     if (phoneNumber !== verification.phoneNumber) {
       return NextResponse.json(
         { error: 'Phone number mismatch with verified session' },
@@ -78,7 +71,6 @@ export async function POST(request) {
       );
     }
 
-    // Validate required fields
     if (!phoneNumber || !fullName || !email || !addressLine1 || !city || !state || !pincode) {
       return NextResponse.json(
         { error: 'Missing required fields' },
@@ -86,7 +78,6 @@ export async function POST(request) {
       );
     }
 
-    // Validate phone number format
     if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
       return NextResponse.json(
         { error: 'Invalid phone number format' },
@@ -94,7 +85,6 @@ export async function POST(request) {
       );
     }
 
-    // Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json(
         { error: 'Invalid email format' },
@@ -102,7 +92,6 @@ export async function POST(request) {
       );
     }
 
-    // Validate PIN code
     if (!/^\d{6}$/.test(pincode)) {
       return NextResponse.json(
         { error: 'PIN code must be 6 digits' },
@@ -112,11 +101,9 @@ export async function POST(request) {
 
     await dbConnect();
 
-    // Check if this is the first address for this phone number
     const existingAddresses = await Address.find({ phoneNumber });
     const isDefault = existingAddresses.length === 0;
 
-    // Create new address
     const newAddress = new Address({
       phoneNumber,
       fullName,
@@ -150,6 +137,14 @@ export async function POST(request) {
 // PUT - Update an existing address
 export async function PUT(request) {
   try {
+    const verification = await verifyCheckoutSession(request);
+    if (!verification.verified) {
+      return NextResponse.json(
+        { error: 'Phone verification required' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const addressId = searchParams.get('id');
     
@@ -164,18 +159,27 @@ export async function PUT(request) {
     
     await dbConnect();
 
-    const updatedAddress = await Address.findByIdAndUpdate(
-      addressId,
-      updateData,
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedAddress) {
+    // Verify the address belongs to the verified phone number
+    const existingAddress = await Address.findById(addressId);
+    if (!existingAddress) {
       return NextResponse.json(
         { error: 'Address not found' },
         { status: 404 }
       );
     }
+
+    if (existingAddress.phoneNumber !== verification.phoneNumber) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 403 }
+      );
+    }
+
+    const updatedAddress = await Address.findByIdAndUpdate(
+      addressId,
+      updateData,
+      { new: true, runValidators: true }
+    );
 
     return NextResponse.json({
       message: 'Address updated successfully',
@@ -194,6 +198,14 @@ export async function PUT(request) {
 // DELETE - Delete an address
 export async function DELETE(request) {
   try {
+    const verification = await verifyCheckoutSession(request);
+    if (!verification.verified) {
+      return NextResponse.json(
+        { error: 'Phone verification required' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const addressId = searchParams.get('id');
     
@@ -204,16 +216,25 @@ export async function DELETE(request) {
       );
     }
 
-    await connectDB();
+    await dbConnect();
 
-    const deletedAddress = await Address.findByIdAndDelete(addressId);
-
-    if (!deletedAddress) {
+    // Verify the address belongs to the verified phone number
+    const existingAddress = await Address.findById(addressId);
+    if (!existingAddress) {
       return NextResponse.json(
         { error: 'Address not found' },
         { status: 404 }
       );
     }
+
+    if (existingAddress.phoneNumber !== verification.phoneNumber) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 403 }
+      );
+    }
+
+    await Address.findByIdAndDelete(addressId);
 
     return NextResponse.json({
       message: 'Address deleted successfully',
