@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
-import Address from '@/models/Address';
+import { Address } from "@/models";
 import { verifyCheckoutSession } from '@/lib/middleware/checkoutAuth';
 
 // GET - Fetch addresses for a phone number

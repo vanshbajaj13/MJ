@@ -10,18 +10,20 @@ import Customer from "./Customer";
 import Otp from "./Otp";
 import Review from "./Review";
 import StockReservation from "./StockReservation";
+import Order from "./Order";
 
 export {
-  Product,
-  Category,
-  Size,
   Address,
   Cart,
+  Category,
   CheckoutSession,
   Coupon,
   CouponUsage,
   Customer,
+  Order,
   Otp,
+  Product,
   Review,
+  Size,
   StockReservation,
 };

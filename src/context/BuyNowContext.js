@@ -1,4 +1,4 @@
-// context/CheckoutContext.jsx - Unified context for Buy Now and Cart checkout
+// context/CheckoutContext.jsx
 "use client";
 import { createContext, useContext, useReducer, useEffect } from "react";
 import { useUser } from "./UserContext";
@@ -19,6 +19,17 @@ const checkoutReducer = (state, action) => {
         isGuest: action.payload.isGuest,
         guestTrackingId: action.payload.guestTrackingId,
         isActive: true,
+      };
+
+    case "UPDATE_SESSION_PRICES":
+      // Update prices and coupon silently when backend detects changes
+      return {
+        ...state,
+        items: action.payload.items || state.items,
+        appliedCoupon: action.payload.appliedCoupon !== undefined 
+          ? action.payload.appliedCoupon 
+          : state.appliedCoupon,
+        priceUpdateTimestamp: new Date().getTime(), // Track when prices changed
       };
 
     case "CLEAR_SESSION":
@@ -50,6 +61,12 @@ const checkoutReducer = (state, action) => {
         couponLoading: action.payload,
       };
 
+    case "SET_PRICE_UPDATE_LOADING":
+      return {
+        ...state,
+        priceUpdateLoading: action.payload,
+      };
+
     default:
       return state;
   }
@@ -67,6 +84,8 @@ const initialState = {
   isActive: false,
   loading: false,
   couponLoading: false,
+  priceUpdateLoading: false,
+  priceUpdateTimestamp: null,
 };
 
 export function BuyNowProvider({ children }) {
@@ -84,7 +103,6 @@ export function BuyNowProvider({ children }) {
         return;
       }
 
-      // Set timer for automatic cleanup
       const timeoutId = setTimeout(() => {
         dispatch({ type: "CLEAR_SESSION" });
       }, expiryTime - currentTime);
@@ -134,6 +152,17 @@ export function BuyNowProvider({ children }) {
     }
   };
 
+  // NEW: Update session prices silently (called from PaymentStep)
+  const updateSessionPrices = (updatedItems, updatedCoupon) => {
+    dispatch({
+      type: "UPDATE_SESSION_PRICES",
+      payload: {
+        items: updatedItems,
+        appliedCoupon: updatedCoupon,
+      },
+    });
+  };
+
   // Create Buy Now session (single product)
   const createBuyNowSession = async (productId, size, quantity = 1) => {
     dispatch({ type: "SET_LOADING", payload: true });
@@ -178,58 +207,55 @@ export function BuyNowProvider({ children }) {
   };
 
   // Create Cart Checkout session (multiple products)
-const createCartCheckoutSession = async (cartItems, initialCoupon = null) => {
-  dispatch({ type: "SET_LOADING", payload: true });
+  const createCartCheckoutSession = async (cartItems, initialCoupon = null) => {
+    dispatch({ type: "SET_LOADING", payload: true });
 
-  try {
-    const response = await fetch("/api/cart-checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ cartItems }),
-    });
+    try {
+      const response = await fetch("/api/cart-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ cartItems }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      // 🔥 Throw full JSON, not just message
-      throw data;
-    }
-
-    const sessionData = {
-      sessionId: data.sessionId,
-      id: data.sessionId,
-      items: data.session.items || [],
-      appliedCoupon: data.session.appliedCoupon || null,
-      type: data.session.type,
-      expiresAt: data.session.expiresAt,
-      isGuest: data.session.isGuest,
-      guestTrackingId: data.session.guestTrackingId,
-    };
-
-    dispatch({ type: "SET_SESSION", payload: sessionData });
-
-    if (initialCoupon) {
-      try {
-        await applyCoupon(initialCoupon, data.sessionId); // 👈 pass id explicitly
-      } catch (couponError) {
-        console.warn("Failed to apply initial coupon:", couponError.message);
+      if (!response.ok) {
+        throw data;
       }
+
+      const sessionData = {
+        sessionId: data.sessionId,
+        id: data.sessionId,
+        items: data.session.items || [],
+        appliedCoupon: data.session.appliedCoupon || null,
+        type: data.session.type,
+        expiresAt: data.session.expiresAt,
+        isGuest: data.session.isGuest,
+        guestTrackingId: data.session.guestTrackingId,
+      };
+
+      dispatch({ type: "SET_SESSION", payload: sessionData });
+
+      if (initialCoupon) {
+        try {
+          await applyCoupon(initialCoupon, data.sessionId);
+        } catch (couponError) {
+          console.warn("Failed to apply initial coupon:", couponError.message);
+        }
+      }
+
+      return {
+        success: true,
+        sessionId: data.sessionId,
+        session: sessionData,
+      };
+    } catch (error) {
+      throw error;
+    } finally {
+      dispatch({ type: "SET_LOADING", payload: false });
     }
-
-    return {
-      success: true,
-      sessionId: data.sessionId,
-      session: sessionData,
-    };
-  } catch (error) {
-    // 👇 Pass JSON errors upward so CartDrawer can handle them
-    throw error;
-  } finally {
-    dispatch({ type: "SET_LOADING", payload: false });
-  }
-};
-
+  };
 
   // Apply coupon to session
   const applyCoupon = async (couponCode, sessionIdOverride = null) => {
@@ -246,7 +272,7 @@ const createCartCheckoutSession = async (cartItems, initialCoupon = null) => {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          sessionId: sessionId, // ✅ use either override or state
+          sessionId: sessionId,
           couponCode: couponCode.trim().toUpperCase(),
         }),
       });
@@ -384,6 +410,8 @@ const createCartCheckoutSession = async (cartItems, initialCoupon = null) => {
     isActive: state.isActive,
     loading: state.loading,
     couponLoading: state.couponLoading,
+    priceUpdateLoading: state.priceUpdateLoading,
+    priceUpdateTimestamp: state.priceUpdateTimestamp,
     expiresAt: state.expiresAt,
     isGuest: state.isGuest,
     guestTrackingId: state.guestTrackingId,
@@ -403,10 +431,11 @@ const createCartCheckoutSession = async (cartItems, initialCoupon = null) => {
     // Actions
     loadSession,
     createBuyNowSession,
-    createCartCheckoutSession, // New action for cart checkout
+    createCartCheckoutSession,
     applyCoupon,
     removeCoupon,
     clearSession,
+    updateSessionPrices, // NEW: for silent price updates
   };
 
   return (
@@ -425,5 +454,5 @@ export const useCheckout = () => {
   return context;
 };
 
-// Backward compatibility - keep useBuyNow as alias
+// Backward compatibility
 export const useBuyNow = useCheckout;

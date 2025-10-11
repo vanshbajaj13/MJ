@@ -1,8 +1,7 @@
 // api/cart/apply-coupon/route.js - Secure implementation with proper guest handling
 import dbConnect from "@/lib/dbConnect";
 import { getCurrentUser } from "@/lib/auth";
-import Cart from "@/models/Cart";
-import Product from "@/models/Product";
+import { Cart, Product } from "@/models";
 import mongoose from "mongoose";
 import { CouponValidator } from "@/lib/CouponUtils";
 

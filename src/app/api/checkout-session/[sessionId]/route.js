@@ -1,7 +1,7 @@
 // api/checkout-session/[sessionId]/route.js - Fetch existing checkout session
 import dbConnect from "@/lib/dbConnect";
 import { getCurrentUser } from "@/lib/auth";
-import CheckoutSession from "@/models/CheckoutSession";
+import { CheckoutSession } from "@/models";
 
 export async function GET(request, { params }) {
   try {

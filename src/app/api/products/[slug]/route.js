@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/dbConnect";
-import { Product, Size } from "@/models";
-import StockReservation from "@/models/StockReservation"; // Import the StockReservation model
+import { Product, Size,StockReservation } from "@/models";
 
 export async function GET(req, { params }) {
   const { slug } = await params;

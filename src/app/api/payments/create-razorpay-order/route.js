@@ -2,7 +2,7 @@
 import Razorpay from "razorpay";
 import dbConnect from "@/lib/dbConnect";
 import { verifyCheckoutSession } from "@/lib/middleware/checkoutAuth";
-import CheckoutSession from "@/models/CheckoutSession";
+import { CheckoutSession } from "@/models";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -22,11 +22,14 @@ export async function POST(request) {
       );
     }
 
-    // Verify WhatsApp authentication
+    // Verify phone authentication using your existing middleware
     const verification = await verifyCheckoutSession(request);
     if (!verification.verified) {
       return Response.json(
-        { error: "Session verification required" },
+        { 
+          error: verification.error || "Session verification required",
+          redirectTo: verification.redirectUrl 
+        },
         { status: 401 }
       );
     }
@@ -64,7 +67,7 @@ export async function POST(request) {
     const razorpayOrder = await razorpay.orders.create({
       amount: Math.round(totals.finalTotal * 100), // Amount in paise
       currency: "INR",
-      receipt: `${sessionId}_${Date.now()}`,
+      receipt: `rcpt_${sessionId.slice(-10)}_${Date.now()}`.substring(0, 40),
       notes: {
         sessionId: sessionId,
         sessionType: session.type,

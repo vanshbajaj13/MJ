@@ -1,8 +1,7 @@
 // api/checkout-session/[sessionId]/close/route.js - Close checkout session with stock reservation release
 import dbConnect from "@/lib/dbConnect";
 import { getCurrentUser } from "@/lib/auth";
-import CheckoutSession from "@/models/CheckoutSession";
-import StockReservation from "@/models/StockReservation";
+import { CheckoutSession, StockReservation } from "@/models";
 
 export async function POST(request, { params }) {
   try {

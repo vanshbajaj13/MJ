@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import dbConnect from "@/lib/dbConnect";
-import Cart from "@/models/Cart";
+import { Cart } from "@/models";
 
 // Sync local cart with database cart when user logs in
 export async function POST(req) {

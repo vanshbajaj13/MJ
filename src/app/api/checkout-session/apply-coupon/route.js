@@ -1,8 +1,7 @@
 // api/checkout-session/apply-coupon/route.js - Apply coupon to checkout session
 import dbConnect from "@/lib/dbConnect";
 import { getCurrentUser } from "@/lib/auth";
-import CheckoutSession from "@/models/CheckoutSession";
-import Product from "@/models/Product";
+import { CheckoutSession, Product } from "@/models";
 import { CouponValidator } from "@/lib/CouponUtils";
 
 export async function POST(request) {

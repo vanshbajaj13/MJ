@@ -14,7 +14,6 @@ export default function CouponSection({
   couponLoading,
   error,
   success,
-  user,
   totalDiscount,
   isMobile = false,
 }) {

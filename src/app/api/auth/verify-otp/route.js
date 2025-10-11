@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
-import Otp from '@/models/Otp';
+import { Otp } from "@/models";
 import { SignJWT } from 'jose';
 
 export async function POST(request) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import dbConnect from "@/lib/dbConnect";
-import Customer from "@/models/Customer";
+import { Customer } from "@/models";
 
 export async function GET(req) {
   try {

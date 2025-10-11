@@ -1,8 +1,7 @@
 // api/cart/remove-coupon/route.js - Secure remove coupon with guest support
 import dbConnect from "@/lib/dbConnect";
 import { getCurrentUser } from "@/lib/auth";
-import Cart from "@/models/Cart";
-import CouponUsage from "@/models/CouponUsage";
+import { Cart, CouponUsage } from "@/models";
 
 export async function DELETE(request) {
   try {

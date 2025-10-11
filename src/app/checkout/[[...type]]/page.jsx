@@ -11,7 +11,7 @@ import useBlockNavigation from "@/hooks/useBlockNavigation";
 export default function UnifiedCheckoutPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, loading: userLoading } = useUser();
+  const { loading: userLoading } = useUser();
 
   // Unified Checkout context
   const {
@@ -140,27 +140,6 @@ export default function UnifiedCheckoutPage() {
     }
   }, [shouldRedirect, isInitialized, router]);
 
-  // Get active context data
-  const getActiveContext = () => {
-    return {
-      items,
-      totalItems,
-      appliedCoupon,
-      couponLoading,
-      applyCoupon,
-      removeCoupon,
-      subtotal,
-      totalDiscount,
-      shippingDiscount,
-      finalTotal,
-      itemDiscounts,
-      clearItems: clearSession,
-      mode: sessionType || "checkout",
-    };
-  };
-
-  const activeContext = getActiveContext();
-
   const handleBack = () => {
     router.back();
   };
@@ -283,26 +262,12 @@ export default function UnifiedCheckoutPage() {
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Order Summary */}
         <div className="order-0 lg:ml-10 lg:block lg:w-96 flex-shrink-0 lg:p-6 lg:pr-0 rounded-b-2xl lg:max-h-[85vh]">
-          <UnifiedOrderSummary
-            items={activeContext.items}
-            appliedCoupon={activeContext.appliedCoupon}
-            couponLoading={activeContext.couponLoading}
-            applyCoupon={activeContext.applyCoupon}
-            removeCoupon={activeContext.removeCoupon}
-            subtotal={activeContext.subtotal}
-            totalDiscount={activeContext.totalDiscount}
-            shippingDiscount={activeContext.shippingDiscount}
-            finalTotal={activeContext.finalTotal}
-            itemDiscounts={activeContext.itemDiscounts}
-            totalItems={activeContext.totalItems}
-            mode={activeContext.mode}
-            user={user}
-          />
+          <UnifiedOrderSummary/>
         </div>
 
         {/* Checkout Form */}
         <div className="flex-1 overflow-auto lg:p-6 lg:pt-0 scrollbar-hide">
-          <CheckoutForm context={activeContext} sessionId={sessionId} />
+          <CheckoutForm sessionId={sessionId} />
         </div>
       </div>
     </div>

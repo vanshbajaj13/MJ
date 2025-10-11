@@ -1,9 +1,8 @@
-// api/checkout-session/[sessionId]/validate-for-payment/route.js
+// api/checkout-session/[sessionId]/validate-for-payment/route.js - UPDATED
 import dbConnect from "@/lib/dbConnect";
 import { verifyCheckoutSession } from "@/lib/middleware/checkoutAuth";
 import CheckoutSession from "@/models/CheckoutSession";
 import Product from "@/models/Product";
-import StockReservation from "@/models/StockReservation";
 import { CouponValidator } from "@/lib/CouponUtils";
 
 export async function POST(request, { params }) {
@@ -13,20 +12,38 @@ export async function POST(request, { params }) {
     const { sessionId } = await params;
     const { shippingAddress } = await request.json();
 
-    // Verify WhatsApp auth session
+    if (!sessionId || !shippingAddress) {
+      return Response.json(
+        {
+          success: false,
+          hasErrors: true,
+          errors: [
+            {
+              type: "system",
+              message: "Session ID and shipping address are required",
+            },
+          ],
+        },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Verify authentication
     const verification = await verifyCheckoutSession(request);
     if (!verification.verified) {
       return Response.json(
         {
           success: false,
-          error: "Authentication required",
-          requireAuth: true,
+          hasErrors: true,
+          errors: [
+            { type: "system", message: "Session verification required" },
+          ],
         },
         { status: 401 }
       );
     }
 
-    // Get checkout session
+    // ✅ Fetch checkout session
     const session = await CheckoutSession.findOne({
       sessionId,
       status: "active",
@@ -37,101 +54,73 @@ export async function POST(request, { params }) {
       return Response.json(
         {
           success: false,
-          error: "Checkout session not found or expired",
-          sessionExpired: true,
+          hasErrors: true,
+          errors: [
+            {
+              type: "system",
+              message: "Checkout session not found or expired",
+            },
+          ],
         },
         { status: 404 }
       );
     }
 
-    // Validate shipping address
-    if (!shippingAddress?.fullName || !shippingAddress?.addressLine1 || 
-        !shippingAddress?.city || !shippingAddress?.state || 
-        !shippingAddress?.pincode || !shippingAddress?.email) {
-      return Response.json(
-        {
-          success: false,
-          error: "Complete shipping address is required",
-        },
-        { status: 400 }
-      );
-    }
-
-    const validationErrors = [];
+    const errors = [];
     const priceChanges = [];
-    const stockIssues = [];
+    let sessionChanged = false;
 
-    // 1. VALIDATE STOCK AVAILABILITY WITH CURRENT RESERVATIONS
+    // ✅ 1. Validate product prices
     for (const item of session.items) {
-      const product = await Product.findById(item.productId).populate("sizes.size");
-      
+      const product = await Product.findById(item.productId)
+        .populate("sizes.size")
+        .populate("category");
+
       if (!product) {
-        stockIssues.push({
-          itemName: item.name,
-          issue: "Product no longer available",
+        errors.push({
+          type: "system",
+          message: `Product ${item.name} is no longer available`,
+          details: [
+            {
+              itemName: item.name,
+              size: item.size,
+              issue: "Product not found",
+            },
+          ],
         });
         continue;
       }
 
-      const sizeInfo = product.sizes?.find(
-        (s) => s.size.name === item.size
-      );
+      const currentPrice = product.price;
 
-      if (!sizeInfo) {
-        stockIssues.push({
-          itemName: item.name,
-          size: item.size,
-          issue: "Size no longer available",
-        });
-        continue;
-      }
-
-      // Check available quantity considering all reservations
-      const availableQty = await StockReservation.getAvailableQty(
-        item.productId,
-        item.size,
-        sizeInfo.qtyBuy,
-        sizeInfo.soldQty
-      );
-
-      if (availableQty < item.quantity) {
-        stockIssues.push({
-          itemName: item.name,
-          size: item.size,
-          requested: item.quantity,
-          available: availableQty,
-          issue: `Only ${availableQty} available`,
-        });
-      }
-
-      // 2. VALIDATE PRICES HAVEN'T CHANGED
-      const currentPrice = product.discountedPrice || product.price;
-      if (Math.abs(currentPrice - item.price) > 0.01) {
+      if (Math.abs(item.price - currentPrice) > 0.01) {
         priceChanges.push({
           itemName: item.name,
+          size: item.size,
           oldPrice: item.price,
           newPrice: currentPrice,
-          difference: currentPrice - item.price,
+          issue: `Price updated from ₹${item.price} to ₹${currentPrice}`,
         });
+
+        item.price = currentPrice;
+        sessionChanged = true;
       }
     }
 
-    // 3. REVALIDATE COUPON IF APPLIED
-    let couponValid = true;
-    let couponError = null;
-    let updatedCoupon = null;
-
-    if (session.appliedCoupon) {
+    // ✅ 2. Validate coupon (if applied)
+    if (session.appliedCoupon && session.appliedCoupon.code) {
       try {
-        // Prepare cart items for validation
         const cartItems = [];
+
         for (const item of session.items) {
-          const product = await Product.findById(item.productId).populate("category");
+          const product = await Product.findById(item.productId).populate(
+            "category"
+          );
           if (product) {
             cartItems.push({
               _id: item._id,
               productId: product._id,
-              product: product,
+              product,
               size: item.size,
               quantity: item.quantity,
               price: item.price,
@@ -142,102 +131,167 @@ export async function POST(request, { params }) {
           }
         }
 
-        const validationResult = await CouponValidator.validateAndCalculate(
+        const couponValidation = await CouponValidator.validateAndCalculate(
           session.appliedCoupon.code,
-          verification.userId,
+          session.userId?.toString(),
           cartItems
         );
 
-        if (!validationResult.isValid) {
-          couponValid = false;
-          couponError = validationResult.error;
+        if (!couponValidation.isValid) {
+          errors.push({
+            type: "coupon",
+            message: "Your coupon is no longer valid",
+            details: [{ issue: couponValidation.error }],
+          });
+
+          session.appliedCoupon = null;
+          sessionChanged = true;
         } else {
-          // Update coupon discount if calculations changed
-          updatedCoupon = {
-            code: validationResult.coupon.code,
-            discountAmount: validationResult.discount.discountAmount,
-            shippingDiscount: validationResult.discount.shippingDiscount,
-            itemDiscounts: validationResult.discount.itemDiscounts,
-          };
+          const oldDiscount = session.appliedCoupon.discountAmount;
+          const newDiscount = couponValidation.discount.discountAmount;
+
+          if (Math.abs(oldDiscount - newDiscount) > 0.01) {
+            session.appliedCoupon.discountAmount = newDiscount;
+            session.appliedCoupon.shippingDiscount =
+              couponValidation.discount.shippingDiscount || 0;
+            session.appliedCoupon.itemDiscounts =
+              couponValidation.discount.itemDiscounts;
+            session.appliedCoupon.eligibleItems =
+              couponValidation.discount.eligibleItems;
+            session.appliedCoupon.value = couponValidation.coupon.value;
+
+            priceChanges.push({
+              itemName: "Coupon Discount",
+              oldPrice: oldDiscount,
+              newPrice: newDiscount,
+              issue: `Discount updated from ₹${oldDiscount} to ₹${newDiscount}`,
+            });
+
+            sessionChanged = true;
+          }
         }
       } catch (error) {
-        couponValid = false;
-        couponError = "Coupon validation failed";
+        console.error("Coupon validation error:", error);
+
+        session.appliedCoupon = null;
+        sessionChanged = true;
+
+        errors.push({
+          type: "coupon",
+          message: "Your coupon could not be validated and has been removed",
+          details: [{ issue: error.message || "Coupon validation failed" }],
+        });
       }
     }
 
-    // Compile all validation errors
-    if (stockIssues.length > 0) {
-      validationErrors.push({
-        type: "stock",
-        message: "Some items are no longer available in requested quantities",
-        details: stockIssues,
-      });
-    }
-
+    // ✅ 3. If price/coupon changes exist, note them
     if (priceChanges.length > 0) {
-      validationErrors.push({
+      errors.push({
         type: "price",
-        message: "Prices have changed for some items",
+        message: "Some prices have been updated",
         details: priceChanges,
       });
     }
 
-    if (!couponValid && session.appliedCoupon) {
-      validationErrors.push({
-        type: "coupon",
-        message: couponError || "Applied coupon is no longer valid",
-        details: { code: session.appliedCoupon.code },
+    // ✅ 4. Save only once at the end (if anything changed)
+    if (sessionChanged) {
+      try {
+        await session.save();
+      } catch (error) {
+        if (
+          process.env.NODE_ENV === "development" &&
+          error.name === "VersionError"
+        ) {
+          console.warn(
+            "⚠️ Ignoring VersionError in dev (caused by double invocation)"
+          );
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    // ✅ 5. If there are errors (including price changes), return them but still allow payment
+    //    The frontend will update prices silently using updateSessionPrices
+    if (errors.length > 0) {
+      const totals = session.calculateTotals();
+      return Response.json({
+        success: true, // Still success because we can proceed
+        hasErrors: true, // But there are price changes
+        errors, // Return the errors/changes
+        session: {
+          sessionId: session.sessionId,
+          type: session.type,
+          items: session.items,
+          appliedCoupon: session.appliedCoupon,
+          expiresAt: session.expiresAt,
+          isGuest: !session.userId,
+          guestTrackingId: session.guestTrackingId,
+        },
+        totals: {
+          subtotal: totals.subtotal,
+          totalItems: totals.totalItems,
+          discount: totals.totalDiscount,
+          shippingDiscount: totals.shippingDiscount,
+          total: totals.finalTotal,
+          itemDiscounts: totals.itemDiscounts,
+          savings: totals.savings,
+        },
+        customerDetails: {
+          name: shippingAddress.fullName,
+          email: shippingAddress.email,
+          phone: verification.phoneNumber,
+        },
+        shippingAddress,
       });
     }
 
-    // If there are validation errors, return them
-    if (validationErrors.length > 0) {
-      return Response.json(
-        {
-          success: false,
-          hasErrors: true,
-          errors: validationErrors,
-          stockIssues,
-          priceChanges,
-          couponValid,
-          message: "Please review the issues before proceeding with payment",
-        },
-        { status: 400 }
-      );
-    }
-
-    // 4. UPDATE SESSION WITH VALIDATED DATA
-    if (updatedCoupon) {
-      session.appliedCoupon.discountAmount = updatedCoupon.discountAmount;
-      session.appliedCoupon.shippingDiscount = updatedCoupon.shippingDiscount;
-      session.appliedCoupon.itemDiscounts = updatedCoupon.itemDiscounts;
-    }
-
-    await session.save();
-
-    // 5. CALCULATE FINAL VALIDATED TOTALS
+    // ✅ 6. Calculate totals and finalize (no errors/changes)
     const totals = session.calculateTotals();
 
-    // 6. STORE VALIDATED ADDRESS IN SESSION (for order creation)
-    session.validatedAddress = shippingAddress;
     session.validatedAt = new Date();
-    await session.save();
+    session.validatedAddress = shippingAddress;
+    try {
+      await session.save();
+    } catch (error) {
+      if (
+        process.env.NODE_ENV === "development" &&
+        error.name === "VersionError"
+      ) {
+        console.warn(
+          "⚠️ Ignoring VersionError in dev (caused by double invocation)"
+        );
+      } else {
+        throw error;
+      }
+    }
 
     return Response.json({
       success: true,
-      validated: true,
-      message: "All validations passed. Ready for payment.",
+      hasErrors: false,
+      errors: [],
       session: {
         sessionId: session.sessionId,
+        type: session.type,
         items: session.items,
         appliedCoupon: session.appliedCoupon,
-        totals,
+        expiresAt: session.expiresAt,
+        isGuest: !session.userId,
+        guestTrackingId: session.guestTrackingId,
+      },
+      totals: {
+        subtotal: totals.subtotal,
+        totalItems: totals.totalItems,
+        discount: totals.totalDiscount,
+        shippingDiscount: totals.shippingDiscount,
+        total: totals.finalTotal,
+        itemDiscounts: totals.itemDiscounts,
+        savings: totals.savings,
       },
       customerDetails: {
-        phone: verification.phoneNumber,
         name: shippingAddress.fullName,
         email: shippingAddress.email,
+        phone: verification.phoneNumber,
       },
       shippingAddress,
     });
@@ -246,7 +300,13 @@ export async function POST(request, { params }) {
     return Response.json(
       {
         success: false,
-        error: "Validation failed. Please try again.",
+        hasErrors: true,
+        errors: [
+          {
+            type: "system",
+            message: "Unable to validate order. Please try again.",
+          },
+        ],
       },
       { status: 500 }
     );

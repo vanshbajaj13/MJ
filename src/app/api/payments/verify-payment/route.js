@@ -1,31 +1,30 @@
-// src/app/api/payments/verify-payment/route.js
-import { NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { verifyCheckoutSession } from '@/lib/middleware/checkoutAuth';
-import CheckoutSession from '@/models/CheckoutSession';
-import Order from '@/models/Order';
-import dbConnect from '@/lib/dbConnect';
+// api/payments/verify-payment/route.js
+import { NextResponse } from "next/server";
+import crypto from "crypto";
+import { verifyCheckoutSession } from "@/lib/middleware/checkoutAuth";
+import { CheckoutSession, Order } from "@/models";
+import dbConnect from "@/lib/dbConnect";
 
 function verifyRazorpaySignature(orderID, paymentID, signature, secret) {
-  const body = orderID + '|' + paymentID;
+  const body = orderID + "|" + paymentID;
   const expectedSignature = crypto
-    .createHmac('sha256', secret)
+    .createHmac("sha256", secret)
     .update(body.toString())
-    .digest('hex');
-  
+    .digest("hex");
+
   return expectedSignature === signature;
 }
 
 export async function POST(request) {
   try {
-    const { 
-      razorpay_order_id, 
-      razorpay_payment_id, 
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
       razorpay_signature,
-      shippingAddress 
+      shippingAddress,
     } = await request.json();
 
-    // Verify signature
+    // Verify signature first
     const isValidSignature = verifyRazorpaySignature(
       razorpay_order_id,
       razorpay_payment_id,
@@ -35,60 +34,80 @@ export async function POST(request) {
 
     if (!isValidSignature) {
       return NextResponse.json(
-        { error: 'Invalid payment signature' },
+        { error: "Invalid payment signature" },
         { status: 400 }
       );
     }
 
-    // Verify checkout session
+    // Verify checkout session using your existing middleware
     const verification = await verifyCheckoutSession(request);
     if (!verification.verified) {
       return NextResponse.json(
-        { error: 'Session verification required' },
+        {
+          error: verification.error || "Session verification required",
+          redirectTo: verification.redirectUrl,
+        },
         { status: 401 }
       );
     }
 
     await dbConnect();
 
-    // Get checkout session
+    // Get checkout session by Razorpay order ID
     const checkoutSession = await CheckoutSession.findOne({
-      sessionId: verification.sessionId,
-      status: 'active',
+      razorpayOrderId: razorpay_order_id,
+      status: "active",
     });
 
     if (!checkoutSession) {
       return NextResponse.json(
-        { error: 'Checkout session not found or expired' },
+        { error: "Checkout session not found or already processed" },
         { status: 404 }
+      );
+    }
+    console.log("verification.sessionId:", verification.sessionId);
+    console.log("checkoutSession.sessionId:", checkoutSession.sessionId);
+
+    // Verify this payment belongs to the authenticated user's session
+    if (checkoutSession.sessionId !== verification.sessionId) {
+      return NextResponse.json(
+        { error: "Session mismatch - unauthorized payment" },
+        { status: 403 }
       );
     }
 
     // Create order from checkout session
     const totals = checkoutSession.calculateTotals();
-    
+
     const order = await Order.create({
-      orderNumber: `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
+      orderNumber: Order.generateOrderNumber(),
       customerPhone: verification.phoneNumber,
       customerEmail: shippingAddress.email,
       customerName: shippingAddress.fullName,
       items: checkoutSession.items,
       shippingAddress,
       paymentDetails: {
-        method: 'razorpay',
+        method: "razorpay",
         razorpayOrderId: razorpay_order_id,
         razorpayPaymentId: razorpay_payment_id,
         razorpaySignature: razorpay_signature,
-        status: 'completed',
+        status: "completed",
+        paidAt: new Date(),
       },
-      orderStatus: 'confirmed',
+      orderStatus: "confirmed",
+      confirmedAt: new Date(),
       totals,
       appliedCoupon: checkoutSession.appliedCoupon,
+      sessionId: checkoutSession.sessionId,
+      orderSource: checkoutSession.type,
+      guestTrackingId: checkoutSession.guestTrackingId,
     });
 
     // Complete checkout session and release reservations
-    await checkoutSession.releaseReservations('completed');
-    checkoutSession.status = 'completed';
+    await checkoutSession.releaseReservations("completed");
+    checkoutSession.status = "completed";
+    checkoutSession.completedAt = new Date();
+    checkoutSession.orderId = order._id;
     await checkoutSession.save();
 
     return NextResponse.json({
@@ -102,11 +121,10 @@ export async function POST(request) {
         shippingAddress: order.shippingAddress,
       },
     });
-
   } catch (error) {
-    console.error('Payment verification error:', error);
+    console.error("Payment verification error:", error);
     return NextResponse.json(
-      { error: 'Payment verification failed' },
+      { error: "Payment verification failed" },
       { status: 500 }
     );
   }

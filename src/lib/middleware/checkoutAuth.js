@@ -18,6 +18,8 @@ export async function verifyCheckoutSession(request) {
     
     try {
       const { payload } = await jwtVerify(token, secret);
+      console.log(payload);
+      
       
       // Check if verification is still valid (48 hours instead of 1 hour)
       const now = Date.now();

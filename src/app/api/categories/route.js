@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/dbConnect";
-import Category from "@/models/Category";
+import { Category } from "@/models";
 
 let cachedCategories = null;
 let lastFetched = 0;

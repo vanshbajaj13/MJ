@@ -1,9 +1,7 @@
 // api/orders/record-coupon-usage/route.js - Record coupon usage when order is completed
 import dbConnect from "@/lib/dbConnect";
 import { getCurrentUser } from "@/lib/auth";
-import Coupon from "@/models/Coupon";
-import CouponUsage from "@/models/CouponUsage";
-import Cart from "@/models/Cart";
+import { Coupon, CouponUsage, Cart } from "@/models";
 
 export async function POST(request) {
   try {

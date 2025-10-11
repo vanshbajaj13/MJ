@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import dbConnect from "@/lib/dbConnect";
-import Cart from "@/models/Cart";
+import { Cart } from "@/models";
 
 // Get user's cart
 export async function GET(req) {

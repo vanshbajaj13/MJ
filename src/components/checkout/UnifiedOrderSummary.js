@@ -2,24 +2,12 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCheckout } from "@/context/BuyNowContext";
 import Image from "next/image";
 import { useSwipeable } from "react-swipeable";
 import CouponSection from "../Coupon/CouponSection";
 
 export default function UnifiedOrderSummary({
-  items,
-  appliedCoupon,
-  couponLoading,
-  applyCoupon,
-  removeCoupon,
-  subtotal,
-  totalDiscount,
-  shippingDiscount,
-  finalTotal,
-  itemDiscounts,
-  totalItems,
-  mode, // 'cart' | 'buy_now'
-  user,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [couponCode, setCouponCode] = useState("");
@@ -28,6 +16,20 @@ export default function UnifiedOrderSummary({
   const [success, setSuccess] = useState("");
   const contentRef = useRef(null);
   const [height, setHeight] = useState("0px");
+
+  const {
+    items,
+    appliedCoupon,
+    couponLoading,
+    applyCoupon,
+    removeCoupon,
+    subtotal,
+    totalDiscount,
+    shippingDiscount,
+    finalTotal,
+    itemDiscounts,
+    totalItems,
+  } = useCheckout();
 
   useEffect(() => {
     if (contentRef.current) {
@@ -211,12 +213,10 @@ export default function UnifiedOrderSummary({
               couponLoading={couponLoading}
               error={error}
               success={success}
-              user={user}
               subtotal={subtotal}
               totalDiscount={totalDiscount}
               shippingDiscount={shippingDiscount}
               finalTotal={finalTotal}
-              mode={mode}
             />
           </div>
         </div>
@@ -287,7 +287,6 @@ export default function UnifiedOrderSummary({
             couponLoading={couponLoading}
             error={error}
             success={success}
-            user={user}
             totalDiscount={totalDiscount}
           />
         </div>
@@ -320,12 +319,10 @@ function MobileContent({
   couponLoading,
   error,
   success,
-  user,
   subtotal,
   totalDiscount,
   shippingDiscount,
   finalTotal,
-  mode,
 }) {
   return (
     <>
@@ -345,7 +342,6 @@ function MobileContent({
             couponLoading={couponLoading}
             error={error}
             success={success}
-            user={user}
             totalDiscount={totalDiscount}
             isMobile={true}
           />
@@ -406,7 +402,6 @@ function MobileContent({
         totalDiscount={totalDiscount}
         shippingDiscount={shippingDiscount}
         finalTotal={finalTotal}
-        mode={mode}
         isMobile={true}
       />
     </>
@@ -490,7 +485,6 @@ function PriceBreakdown({
   totalDiscount,
   shippingDiscount,
   finalTotal,
-  mode,
   isMobile = false,
 }) {
   return (

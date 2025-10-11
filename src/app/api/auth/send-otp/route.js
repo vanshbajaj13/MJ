@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
-import Otp from '@/models/Otp';
+import { Otp } from "@/models";
 
 // Rate limiting storage (in production, use Redis)
 const rateLimitStore = new Map();

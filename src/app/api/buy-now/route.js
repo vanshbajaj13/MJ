@@ -1,9 +1,7 @@
 // api/buy-now/route.js - Updated with stock reservation system
 import dbConnect from "@/lib/dbConnect";
 import { getCurrentUser } from "@/lib/auth";
-import Product from "@/models/Product";
-import CheckoutSession from "@/models/CheckoutSession";
-import StockReservation from "@/models/StockReservation";
+import { Product, CheckoutSession, StockReservation  } from "@/models";
 import crypto from "crypto";
 
 export async function POST(request) {

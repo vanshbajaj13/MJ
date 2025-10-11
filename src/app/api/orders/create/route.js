@@ -5,9 +5,7 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import dbConnect from "@/lib/dbConnect";
-import Cart from "@/models/Cart";
-import Order from "@/models/Order";
-import Product from "@/models/Product";
+import { Cart, Order, Product } from "@/models";
 import { CouponValidator } from "@/lib/couponUtils";
 import { CouponUsage } from "@/lib/couponUtils";
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/dbConnect";
-import Customer from "@/models/Customer";
+import { Customer } from "@/models";
 import nodemailer from "nodemailer";
 
 export async function POST(req) {
