@@ -6,6 +6,7 @@ import { useCheckout } from "@/context/BuyNowContext";
 import { useUser } from "@/context/UserContext";
 import CheckoutForm from "@/components/checkout/CheckoutForm";
 import UnifiedOrderSummary from "@/components/checkout/UnifiedOrderSummary";
+import SessionTimer from "@/components/checkout/SessionTimer";
 import useBlockNavigation from "@/hooks/useBlockNavigation";
 
 export default function UnifiedCheckoutPage() {
@@ -43,7 +44,7 @@ export default function UnifiedCheckoutPage() {
 
   // Use the navigation blocking hook
   const { isAttemptingNavigation, proceedNavigation, cancelNavigation } =
-    useBlockNavigation(true, ["/payment/success", "/payment/failure", "/"]);
+    useBlockNavigation(true, ["/order-confirmation", "/"]);
 
   // Function to load session
   const loadCheckoutSession = async (sessionId) => {
@@ -175,34 +176,43 @@ export default function UnifiedCheckoutPage() {
 
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="bg-white rounded-lg shadow-sm px-4 pt-2 lg:p-4 lg:px-6 flex justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
-          {sessionType && (
-            <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-              {sessionType === "buy_now" ? "Buy Now" : "Cart Checkout"}
-            </span>
-          )}
+      {/* Updated Header with Timer */}
+      <div className="bg-white rounded-lg shadow-sm px-4 pt-2 lg:p-4 lg:px-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">Checkout</h1>
+            {/* {sessionType && (
+              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                {sessionType === "buy_now" ? "Buy Now" : "Cart Checkout"}
+              </span>
+            )} */}
+            <SessionTimer />
+          </div>
+          
+          <div className="flex items-center gap-4">
+            {/* Session Timer */}
+            
+            {/* Close Button */}
+            <button
+              onClick={handleBack}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors group"
+            >
+              <svg
+                className="w-6 h-6 text-gray-400 group-hover:text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
-        <button
-          onClick={handleBack}
-          className="p-2 hover:bg-gray-100 rounded-full transition-colors group"
-        >
-          <svg
-            className="w-6 h-6 text-gray-400 group-hover:text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
       </div>
 
       {/* Navigation Blocking Modal */}

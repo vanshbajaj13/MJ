@@ -1,9 +1,19 @@
-// components/checkout/PaymentStep.js - Enhanced version
+// src/components/checkout/PaymentStep.js - Updated with PaymentSuccessModal
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCheckout } from "@/context/BuyNowContext";
+import { useCart } from "@/context/CartContext";
 import Tooltip, { ToastContainer } from "@/components/ui/Tooltip";
+import useBlockNavigation from "@/hooks/useBlockNavigation";
+import { useRouter } from "next/navigation";
+
+// Import the new components
+import DeliveryDetails from "./DeliveryDetails";
+import PriceChangeNotification from "./PriceChangeNotification";
+import PaymentRecoveryModal from "./PaymentRecoveryModal";
+import PaymentSuccessModal from "./PaymentSuccessModal";
+import AnimatedPrice from "./AnimatedPrice";
 
 const loadRazorpayScript = () => {
   return new Promise((resolve) => {
@@ -19,218 +29,7 @@ const loadRazorpayScript = () => {
   });
 };
 
-const AnimatedPrice = ({ value, label, prefix = "₹" }) => {
-  const [displayValue, setDisplayValue] = useState(value);
-  const [isAnimating, setIsAnimating] = useState(false);
-
-  useEffect(() => {
-    if (Math.abs(displayValue - value) > 0.01) {
-      setIsAnimating(true);
-      const timer = setTimeout(() => {
-        setDisplayValue(value);
-        setIsAnimating(false);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [value, displayValue]);
-
-  return (
-    <div
-      className={`flex justify-between text-sm ${
-        isAnimating ? "animate-pulse" : ""
-      }`}
-    >
-      <span className="text-gray-600">{label}</span>
-      <motion.span
-        key={displayValue}
-        initial={isAnimating ? { opacity: 0.5, scale: 0.9 } : {}}
-        animate={isAnimating ? { opacity: 1, scale: 1 } : {}}
-        transition={{ duration: 0.3 }}
-        className={`font-semibold ${
-          isAnimating ? "text-blue-600" : "text-gray-900"
-        }`}
-      >
-        {prefix}
-        {displayValue.toFixed(2)}
-      </motion.span>
-    </div>
-  );
-};
-
-const DeliveryDetails = ({ selectedAddress, onChangeAddress }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm"
-    >
-      <div
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between cursor-pointer"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col items-center">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Delivering to
-            </p>
-            <svg
-              className="w-5 h-5 text-blue-600 mt-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-          </div>
-          <div>
-            <p className="text-lg font-semibold text-gray-900 mt-1">
-              {selectedAddress?.fullName}
-            </p>
-            <p className="text-sm text-gray-600 mt-1">
-              {selectedAddress?.phoneNumber}
-            </p>
-          </div>
-        </div>
-
-        <motion.div
-          animate={{ rotate: isExpanded ? 180 : 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <svg
-            className="w-5 h-5 text-gray-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 14l-7 7m0 0l-7-7m7 7V3"
-            />
-          </svg>
-        </motion.div>
-      </div>
-
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3 }}
-            className="mt-4 pt-4 border-t border-gray-100"
-          >
-            <div className="space-y-3">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium text-gray-900">
-                    {selectedAddress?.addressLine1}
-                  </span>
-                  {selectedAddress?.addressLine2 && (
-                    <>
-                      <br />
-                      <span>{selectedAddress.addressLine2}</span>
-                    </>
-                  )}
-                  <br />
-                  <span>
-                    {selectedAddress?.city}, {selectedAddress?.state}{" "}
-                    {selectedAddress?.postalCode}
-                  </span>
-                  <br />
-                  <span className="text-xs text-gray-500">India</span>
-                </p>
-              </div>
-
-              <motion.button
-                onClick={onChangeAddress}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="w-full py-2 px-4 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                Change Address
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-};
-
-const PriceChangeNotification = ({ priceChanges, onDismiss }) => {
-  useEffect(() => {
-    const timer = setTimeout(onDismiss, 5000);
-    return () => clearTimeout(timer);
-  }, [onDismiss]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4 flex items-start gap-3"
-    >
-      <svg
-        className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-      </svg>
-
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-blue-900 text-sm">
-          Your order pricing has been updated
-        </p>
-        <p className="text-xs text-blue-700 mt-1">
-          {priceChanges.length} price change
-          {priceChanges.length > 1 ? "s" : ""} applied to reflect latest rates
-        </p>
-      </div>
-
-      <button
-        onClick={onDismiss}
-        className="text-blue-600 hover:text-blue-900 mt-0.5 flex-shrink-0"
-      >
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-          <path
-            fillRule="evenodd"
-            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-            clipRule="evenodd"
-          />
-        </svg>
-      </button>
-    </motion.div>
-  );
-};
-
-const PaymentStep = ({
-  selectedAddress,
-  onBack,
-  onPaymentSuccess,
-  verifiedPhone,
-}) => {
+const PaymentStep = ({ selectedAddress, onBack, verifiedPhone }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [razorpayLoaded, setRazorpayLoaded] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("razorpay");
@@ -242,6 +41,18 @@ const PaymentStep = ({
   const [showErrorTooltip, setShowErrorTooltip] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [priceChanges, setPriceChanges] = useState([]);
+  const [isRevalidatingBeforePay, setIsRevalidatingBeforePay] = useState(false);
+  const [priceChanged, setPriceChanged] = useState(false);
+
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successOrderId, setSuccessOrderId] = useState(null);
+  const pendingRazorpayOrderIdRef = useRef(null);
+
+  const router = useRouter();
+  const { proceedNavigation } = useBlockNavigation(true, [
+    "/order-confirmation",
+  ]);
 
   const {
     sessionId,
@@ -251,23 +62,28 @@ const PaymentStep = ({
     totalDiscount,
     shippingDiscount,
     updateSessionPrices,
+    type: sessionType,
   } = useCheckout();
 
-  // Load Razorpay script
+  const { clearCart } = useCart();
+
   useEffect(() => {
     loadRazorpayScript().then(setRazorpayLoaded);
   }, []);
 
-  // Auto-validate on mount
   useEffect(() => {
     if (selectedAddress && sessionId) {
       validateBeforePayment();
     }
   }, [selectedAddress, sessionId]);
 
-  // Validate prices and session before payment
-  const validateBeforePayment = async () => {
-    setIsValidating(true);
+  const validateBeforePayment = async (isRevalidateOnPay = false) => {
+    if (isRevalidateOnPay) {
+      setIsRevalidatingBeforePay(true);
+    } else {
+      setIsValidating(true);
+    }
+
     setShowErrorTooltip(false);
     setShowPriceChangeNotification(false);
 
@@ -283,7 +99,6 @@ const PaymentStep = ({
       );
 
       const data = await response.json();
-
       if (!response.ok) {
         const errorMsg =
           data.errors?.[0]?.message || "Unable to validate order";
@@ -293,20 +108,16 @@ const PaymentStep = ({
         return false;
       }
 
-      // Check if prices changed
       const backendTotal = data.totals.total;
       const contextTotal = finalTotal;
-
       if (Math.abs(backendTotal - contextTotal) > 0.01) {
-        // Silently update context with new prices
         updateSessionPrices(data.session.items, data.session.appliedCoupon);
-
-        // Extract and show price changes
         const changes =
           data.errors?.filter((e) => e.type === "price")[0]?.details || [];
         if (changes.length > 0) {
           setPriceChanges(changes);
           setShowPriceChangeNotification(true);
+          setPriceChanged(true);
         }
       }
 
@@ -318,8 +129,18 @@ const PaymentStep = ({
       setShowErrorTooltip(true);
       return false;
     } finally {
-      setIsValidating(false);
+      if (isRevalidateOnPay) {
+        setIsRevalidatingBeforePay(false);
+      } else {
+        setIsValidating(false);
+      }
     }
+  };
+
+  const clearPendingPayment = () => {
+    localStorage.removeItem("pendingRazorpayOrderId");
+    localStorage.removeItem("checkoutSessionId");
+    localStorage.removeItem("pendingPaymentTimestamp");
   };
 
   const handleRazorpayPayment = async () => {
@@ -331,16 +152,16 @@ const PaymentStep = ({
       return;
     }
 
-    // Re-validate before creating payment order
-    const isValid = await validateBeforePayment();
-    if (!isValid) {
+    const isValid = await validateBeforePayment(true);
+
+    if (priceChanged || !isValid) {
+      setPriceChanged(false);
       return;
     }
 
     setIsProcessing(true);
 
     try {
-      // Create Razorpay order
       const orderResponse = await fetch("/api/payments/create-razorpay-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -358,48 +179,23 @@ const PaymentStep = ({
 
       const orderData = await orderResponse.json();
 
-      // Configure Razorpay
+      pendingRazorpayOrderIdRef.current = orderData.orderId;
+
+      // Store in localStorage for browser close recovery
+      localStorage.setItem("pendingRazorpayOrderId", orderData.orderId);
+      localStorage.setItem("checkoutSessionId", sessionId);
+      localStorage.setItem("pendingPaymentTimestamp", Date.now().toString());
+
       const options = {
         key: orderData.key,
         amount: orderData.amount,
         currency: orderData.currency,
-        name: "Your Store Name",
+        name: "MJ",
         description: `Order for ${items.length} item(s)`,
         order_id: orderData.orderId,
         handler: async (response) => {
-          try {
-            // Verify payment
-            const verifyResponse = await fetch("/api/payments/verify-payment", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                shippingAddress: selectedAddress,
-              }),
-            });
-
-            if (verifyResponse.ok) {
-              const result = await verifyResponse.json();
-              onPaymentSuccess(result);
-            } else {
-              const error = await verifyResponse.json();
-              setErrorMessage(
-                `Payment verification failed: ${error.error || "Unknown error"}`
-              );
-              setShowErrorTooltip(true);
-            }
-          } catch (error) {
-            console.error("Payment verification error:", error);
-            setErrorMessage(
-              "Payment verification failed. Please contact support."
-            );
-            setShowErrorTooltip(true);
-          } finally {
-            setIsProcessing(false);
-          }
+          clearPendingPayment();
+          await handlePaymentVerification(response);
         },
         prefill: {
           name: orderData.customerDetails.name,
@@ -407,11 +203,19 @@ const PaymentStep = ({
           contact: orderData.customerDetails.contact,
         },
         theme: {
-          color: "#2563eb",
+          color: "#000000",
         },
         modal: {
           ondismiss: () => {
             setIsProcessing(false);
+
+            const razorpayOrderId = pendingRazorpayOrderIdRef.current;
+
+            if (razorpayOrderId) {
+              setTimeout(() => {
+                setShowRecoveryModal(true);
+              }, 300);
+            }
           },
         },
       };
@@ -423,7 +227,79 @@ const PaymentStep = ({
       setErrorMessage(`Payment failed: ${error.message}`);
       setShowErrorTooltip(true);
       setIsProcessing(false);
+      pendingRazorpayOrderIdRef.current = null;
+      clearPendingPayment();
     }
+  };
+
+  const handlePaymentVerification = async (response) => {
+    try {
+      const verifyResponse = await fetch("/api/payments/verify-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature,
+          shippingAddress: selectedAddress,
+        }),
+      });
+
+      if (verifyResponse.ok) {
+        const result = await verifyResponse.json();
+        handlePaymentSuccess(result);
+      } else {
+        console.error("Payment verification failed");
+        setIsProcessing(false);
+        setShowRecoveryModal(true);
+      }
+    } catch (error) {
+      console.error("Payment verification error:", error);
+      setIsProcessing(false);
+      setShowRecoveryModal(true);
+    }
+  };
+
+  const handlePaymentSuccess = (result) => {
+    clearPendingPayment();
+    if (sessionType !== "buy_now") {
+      clearCart();
+    }
+
+    pendingRazorpayOrderIdRef.current = null;
+
+    // Show success modal instead of direct redirect
+    setSuccessOrderId(result.orderId);
+    setShowSuccessModal(true);
+  };
+
+  const handleSuccessViewOrder = () => {
+    setShowSuccessModal(false);
+    router.push(`/order-confirmation?orderId=${successOrderId}`);
+  };
+
+  const handleSuccessContinueShopping = () => {
+    setShowSuccessModal(false);
+    router.push("/");
+  };
+
+  const handleRecoverySuccess = (orderNumber) => {
+    clearPendingPayment();
+    if (sessionType !== "buy_now") {
+      clearCart();
+    }
+
+    pendingRazorpayOrderIdRef.current = null;
+
+    // Show success modal for recovery too
+    setSuccessOrderId(orderNumber);
+    setShowSuccessModal(true);
+  };
+
+  const handleRecoveryCancel = () => {
+    setShowRecoveryModal(false);
+    // Note: We don't clear pending payment here so recovery can be attempted again
   };
 
   const handlePayment = () => {
@@ -432,7 +308,6 @@ const PaymentStep = ({
     }
   };
 
-  // Show validation loading
   if (isValidating) {
     return (
       <div className="max-w-2xl mx-auto">
@@ -440,7 +315,7 @@ const PaymentStep = ({
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-            className="w-12 h-12 border-4 border-gray-200 border-t-blue-600 rounded-full mb-4"
+            className="w-12 h-12 border-4 border-gray-200 border-t-black rounded-full mb-4"
           />
           <p className="text-gray-600 text-center">Preparing your payment...</p>
         </div>
@@ -450,7 +325,6 @@ const PaymentStep = ({
 
   return (
     <>
-      {/* Toast Notifications */}
       <ToastContainer position="top-center">
         {showPriceChangeNotification && (
           <PriceChangeNotification
@@ -468,14 +342,32 @@ const PaymentStep = ({
         )}
       </ToastContainer>
 
+      <AnimatePresence>
+        {/* Recovery Modal */}
+        {showRecoveryModal && pendingRazorpayOrderIdRef.current && (
+          <PaymentRecoveryModal
+            razorpayOrderId={pendingRazorpayOrderIdRef.current}
+            onSuccess={handleRecoverySuccess}
+            onCancel={handleRecoveryCancel}
+          />
+        )}
+
+        {/* Success Modal */}
+        {showSuccessModal && successOrderId && (
+          <PaymentSuccessModal
+            orderNumber={successOrderId}
+            onViewOrder={handleSuccessViewOrder}
+            onDismiss={handleSuccessContinueShopping}
+          />
+        )}
+      </AnimatePresence>
+
       <div className="max-w-2xl mx-auto space-y-6">
-        {/* Delivery Details Section */}
         <DeliveryDetails
           selectedAddress={selectedAddress}
           onChangeAddress={onBack}
         />
 
-        {/* Payment Method Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -554,7 +446,6 @@ const PaymentStep = ({
           </motion.label>
         </motion.div>
 
-        {/* Security Notice */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -575,7 +466,6 @@ const PaymentStep = ({
           <span>Secured with 256-bit SSL encryption</span>
         </motion.div>
 
-        {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <motion.button
             onClick={onBack}
@@ -617,9 +507,11 @@ const PaymentStep = ({
                   ? 1
                   : 0.98,
             }}
-            className={`flex-1 py-4 rounded-xl font-semibold transition-all text-lg shadow-lg ${
+            className={`flex-1 py-4 rounded-xl bg-gray-300 text-gray-500 font-semibold transition-all text-lg shadow-lg ${
               isProcessing || !razorpayLoaded || !validationComplete
                 ? "bg-gray-300 cursor-not-allowed text-gray-500"
+                : isRevalidatingBeforePay
+                ? "cursor-wait"
                 : "bg-gray-900 text-white hover:bg-black"
             }`}
           >
@@ -657,7 +549,6 @@ const PaymentStep = ({
           </motion.button>
         </div>
 
-        {/* Payment System Loading */}
         {!razorpayLoaded && (
           <motion.div
             initial={{ opacity: 0 }}

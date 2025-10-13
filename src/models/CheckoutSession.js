@@ -141,42 +141,57 @@ const checkoutSessionSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: ["active", "completed", "expired", "cancelled"],
+      enum: ["active", "completed", "expired", "cancelled","processing"],
       default: "active",
     },
 
     // Expiry - sessions expire after 30 minutes
     expiresAt: {
       type: Date,
-      default: () => new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
+      default: () => new Date(Date.now() + 5 * 60 * 1000), // 5 minutes because of reservations
       index: { expireAfterSeconds: 0 },
     },
     razorpayOrderId: {
-    type: String,
-    default: null,
-    index: true  // Important for verification lookup
-  },
-  validatedAt: {
-    type: Date,
-    default: null
-  },
-  validatedAddress: {
-    type: mongoose.Schema.Types.Mixed,
-    default: null
-  },
-  paymentInitiatedAt: {
-    type: Date,
-    default: null
-  },
-  completedAt: {
-    type: Date,
-    default: null
-  },
-  orderId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Order',
-    default: null
-  },
+      type: String,
+      default: null,
+      index: true, // Important for verification lookup
+    },
+    lockedTotal: {
+      type: Number,
+      default: null,
+      comment: "Total amount locked at payment initiation (in rupees)"
+    },
+    lockedTotals: {
+      subtotal: Number,
+      totalItems: Number,
+      totalDiscount: Number,
+      shippingDiscount: Number,
+      finalTotal: Number,
+      itemDiscounts: mongoose.Schema.Types.Mixed,
+      savings: Number,
+      lockedAt: Date
+    },
+    validatedAt: {
+      type: Date,
+      default: null,
+    },
+    validatedAddress: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    paymentInitiatedAt: {
+      type: Date,
+      default: null,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -189,12 +204,16 @@ checkoutSessionSchema.statics.generateSessionId = function () {
 };
 
 // Validate stock availability considering reservations
-checkoutSessionSchema.statics.validateStockAvailability = async function (items) {
+checkoutSessionSchema.statics.validateStockAvailability = async function (
+  items
+) {
   const stockValidationErrors = [];
-  
+
   // Get all unique product IDs
-  const productIds = [...new Set(items.map(item => item.productId || item.product?._id))];
-  
+  const productIds = [
+    ...new Set(items.map((item) => item.productId || item.product?._id)),
+  ];
+
   // Fetch all products in one query
   const products = await Product.find({
     _id: { $in: productIds },
@@ -202,7 +221,9 @@ checkoutSessionSchema.statics.validateStockAvailability = async function (items)
 
   for (const item of items) {
     const productId = item.productId || item.product?._id;
-    const product = products.find(p => p._id.toString() === productId.toString());
+    const product = products.find(
+      (p) => p._id.toString() === productId.toString()
+    );
 
     if (!product) {
       stockValidationErrors.push(`Product not found: ${productId}`);
@@ -210,7 +231,9 @@ checkoutSessionSchema.statics.validateStockAvailability = async function (items)
     }
 
     const sizeInfo = product.sizes?.find(
-      s => s.size.name === item.size || s.size._id.toString() === item.size.toString()
+      (s) =>
+        s.size.name === item.size ||
+        s.size._id.toString() === item.size.toString()
     );
 
     if (!sizeInfo) {
@@ -253,11 +276,11 @@ checkoutSessionSchema.statics.createBuyNowSession = async function (data) {
 
   // Validate stock availability first
   const stockErrors = await this.validateStockAvailability([
-    { productId, size, quantity }
+    { productId, size, quantity },
   ]);
 
   if (stockErrors.length > 0) {
-    throw new Error(`Stock validation failed: ${stockErrors.join(', ')}`);
+    throw new Error(`Stock validation failed: ${stockErrors.join(", ")}`);
   }
 
   const sessionId = this.generateSessionId();
@@ -268,24 +291,31 @@ checkoutSessionSchema.statics.createBuyNowSession = async function (data) {
 
   try {
     // Create checkout session
-    const [checkoutSession] = await this.create([{
-      sessionId,
-      userId,
-      guestTrackingId,
-      type: "buy_now",
-      items: [{
-        productId,
-        name: productData.name,
-        price: productData.discountedPrice || productData.price,
-        image: productData.images?.[0]?.url || "",
-        size,
-        quantity,
-        slug: productData.slug,
-      }],
-      hasActiveReservations: true,
-      ipAddress,
-      userAgent,
-    }], { session });
+    const [checkoutSession] = await this.create(
+      [
+        {
+          sessionId,
+          userId,
+          guestTrackingId,
+          type: "buy_now",
+          items: [
+            {
+              productId,
+              name: productData.name,
+              price: productData.discountedPrice || productData.price,
+              image: productData.images?.[0]?.url || "",
+              size,
+              quantity,
+              slug: productData.slug,
+            },
+          ],
+          hasActiveReservations: true,
+          ipAddress,
+          userAgent,
+        },
+      ],
+      { session }
+    );
 
     // Create stock reservation
     await StockReservation.createReservation({
@@ -302,7 +332,6 @@ checkoutSessionSchema.statics.createBuyNowSession = async function (data) {
 
     await session.commitTransaction();
     return checkoutSession;
-
   } catch (error) {
     await session.abortTransaction();
     throw error;
@@ -312,7 +341,9 @@ checkoutSessionSchema.statics.createBuyNowSession = async function (data) {
 };
 
 // Create Cart Checkout session with stock reservations
-checkoutSessionSchema.statics.createCartCheckoutSession = async function (data) {
+checkoutSessionSchema.statics.createCartCheckoutSession = async function (
+  data
+) {
   const {
     cartItems,
     userId = null,
@@ -329,13 +360,13 @@ checkoutSessionSchema.statics.createCartCheckoutSession = async function (data) 
   const stockErrors = await this.validateStockAvailability(cartItems);
 
   if (stockErrors.length > 0) {
-    throw new Error(`Stock validation failed: ${stockErrors.join(', ')}`);
+    throw new Error(`Stock validation failed: ${stockErrors.join(", ")}`);
   }
 
   const sessionId = this.generateSessionId();
 
   // Transform cart items to checkout items format
-  const checkoutItems = cartItems.map(item => ({
+  const checkoutItems = cartItems.map((item) => ({
     productId: item.productId || item.product?._id,
     name: item.name || item.product?.name,
     price: item.discountedPrice || item.price || item.product?.price,
@@ -351,19 +382,24 @@ checkoutSessionSchema.statics.createCartCheckoutSession = async function (data) 
 
   try {
     // Create checkout session
-    const [checkoutSession] = await this.create([{
-      sessionId,
-      userId,
-      guestTrackingId,
-      type: "cart_checkout",
-      items: checkoutItems,
-      hasActiveReservations: true,
-      ipAddress,
-      userAgent,
-    }], { session });
+    const [checkoutSession] = await this.create(
+      [
+        {
+          sessionId,
+          userId,
+          guestTrackingId,
+          type: "cart_checkout",
+          items: checkoutItems,
+          hasActiveReservations: true,
+          ipAddress,
+          userAgent,
+        },
+      ],
+      { session }
+    );
 
     // Create stock reservations for all items
-    const reservationItems = cartItems.map(item => ({
+    const reservationItems = cartItems.map((item) => ({
       productId: item.productId || item.product?._id,
       size: item.size,
       quantity: item.quantity,
@@ -381,7 +417,6 @@ checkoutSessionSchema.statics.createCartCheckoutSession = async function (data) 
 
     await session.commitTransaction();
     return checkoutSession;
-
   } catch (error) {
     await session.abortTransaction();
     throw error;
@@ -436,9 +471,14 @@ checkoutSessionSchema.methods.calculateTotals = function () {
 };
 
 // Release stock reservations when session is completed/cancelled
-checkoutSessionSchema.methods.releaseReservations = async function (newStatus = "completed") {
+checkoutSessionSchema.methods.releaseReservations = async function (
+  newStatus = "completed"
+) {
   if (this.hasActiveReservations) {
-    await StockReservation.releaseSessionReservations(this.sessionId, newStatus);
+    await StockReservation.releaseSessionReservations(
+      this.sessionId,
+      newStatus
+    );
     this.hasActiveReservations = false;
     await this.save();
   }
@@ -464,7 +504,7 @@ checkoutSessionSchema.statics.cleanExpiredSessions = async function () {
       status: "active",
     },
     {
-      $set: { 
+      $set: {
         status: "expired",
         hasActiveReservations: false,
       },
@@ -475,6 +515,71 @@ checkoutSessionSchema.statics.cleanExpiredSessions = async function () {
   await StockReservation.cleanExpiredReservations();
 
   return result;
+};
+
+checkoutSessionSchema.methods.lockTotals = function () {
+  const totals = this.calculateTotals();
+  
+  this.lockedTotal = totals.finalTotal;
+  this.lockedTotals = {
+    ...totals,
+    lockedAt: new Date()
+  };
+  
+  return totals;
+};
+
+checkoutSessionSchema.methods.getTotals = function (useLocked = false) {
+  if (useLocked && this.lockedTotals) {
+    return this.lockedTotals;
+  }
+  return this.calculateTotals();
+};
+
+/**
+ * Extend session and reservations for payment window
+ * Called when user initiates payment
+ * Gives 30 minutes to complete payment
+ */
+checkoutSessionSchema.methods.extendForPayment = async function () {
+  const extensionMinutes = 30;
+  const newExpiryTime = new Date(Date.now() + extensionMinutes * 60 * 1000);
+  
+  // Update session expiry
+  this.expiresAt = newExpiryTime;
+  await this.save();
+  
+  // Extend all active stock reservations for this session
+  if (this.hasActiveReservations) {
+    await StockReservation.extendSessionReservations(
+      this.sessionId,
+      extensionMinutes
+    );
+  }
+  
+  return this;
+};
+
+/**
+ * Check if session needs extension
+ * Returns true if < 2 minutes remaining
+ */
+checkoutSessionSchema.methods.needsExtension = function () {
+  const now = Date.now();
+  const expiryTime = new Date(this.expiresAt).getTime();
+  const timeRemaining = expiryTime - now;
+  const twoMinutes = 2 * 60 * 1000;
+  
+  return timeRemaining < twoMinutes && timeRemaining > 0;
+};
+
+/**
+ * Get time remaining in milliseconds
+ */
+checkoutSessionSchema.methods.getTimeRemaining = function () {
+  const now = Date.now();
+  const expiryTime = new Date(this.expiresAt).getTime();
+  return Math.max(0, expiryTime - now);
 };
 
 const CheckoutSession =

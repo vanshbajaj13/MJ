@@ -1,10 +1,13 @@
-// src/components/checkout/CheckoutForm.js - Updated with new components
+// src/components/checkout/CheckoutForm.js
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "@/context/CartContext";
+import { useCheckout } from "@/context/BuyNowContext";
+import { useRouter } from "next/navigation";
 import AddressStep from "./AddressStep";
 import PaymentStep from "./PaymentStep";
+import PaymentSuccessModal from "./PaymentSuccessModal";
 
 const CHECKOUT_STEPS = {
   VERIFICATION: 1,
@@ -12,49 +15,12 @@ const CHECKOUT_STEPS = {
   PAYMENT: 3,
 };
 
-// Initial loading component
-const InitialLoader = () => (
-  <div className="bg-gray-50 min-h-screen">
-    <div className="max-w-4xl mx-auto lg:p-6">
-      <div className="lg:bg-white lg:rounded-lg lg:shadow-sm py-4 lg:p-6 lg:mb-6">
-        <div className="flex items-center justify-center space-x-4">
-          {[1, 2, 3].map((step, index) => (
-            <div key={step} className="flex items-center">
-              <div className="flex flex-col items-center">
-                <div className="w-6 h-6 bg-gray-200 rounded-full animate-pulse"></div>
-                <div className="mt-2 h-3 bg-gray-200 rounded w-12 animate-pulse"></div>
-              </div>
-              {index < 2 && (
-                <div className="flex items-center mx-4">
-                  <div className="flex space-x-1">
-                    {[1, 2, 3, 4].map((dot) => (
-                      <div
-                        key={dot}
-                        className="w-1 h-1 bg-gray-200 rounded-full animate-pulse"
-                      ></div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="lg:bg-white lg:rounded-lg lg:shadow-sm">
-        <div className="p-6">
-          <div className="max-w-md mx-auto text-center">
-            <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-full animate-pulse"></div>
-            <div className="h-6 bg-gray-200 rounded mx-auto mb-2 w-48 animate-pulse"></div>
-            <div className="h-4 bg-gray-100 rounded mx-auto w-64 animate-pulse"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
 export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
-  const { appliedCoupon, discountAmount } = useCart();
+  const { appliedCoupon, discountAmount, clearCart } = useCart();
+  const {
+    type: sessionType,
+  } = useCheckout();
+  const router = useRouter();
 
   // Session and initialization state
   const [isInitializing, setIsInitializing] = useState(true);
@@ -81,6 +47,11 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
   // Address step state
   const [selectedAddress, setSelectedAddress] = useState(null);
 
+  // Payment recovery state
+  const [isCheckingPendingPayment, setIsCheckingPendingPayment] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [recoveryOrderId, setRecoveryOrderId] = useState(null);
+
   // Timer for resend OTP
   useEffect(() => {
     let interval;
@@ -92,12 +63,16 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
     return () => clearInterval(interval);
   }, [resendTimer]);
 
-  // Enhanced session check on mount with proper state management
+  // Enhanced session check with payment recovery
   useEffect(() => {
-    const checkVerificationStatus = async () => {
+    const initializeCheckout = async () => {
       try {
         setIsInitializing(true);
 
+        // First check for pending payments
+        await checkForPendingPayment();
+
+        // Then check verification status
         const response = await fetch("/api/auth/verify-session", {
           method: "GET",
           credentials: "include",
@@ -109,18 +84,15 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
         if (response.ok) {
           const data = await response.json();
           if (data.verified) {
-            // User has valid session - set up verified state
             setIsVerified(true);
             setVerifiedPhone(data.phoneNumber);
             setPhoneNumber(data.phoneNumber.replace("+91", ""));
             setPhoneStep("otp");
             setCurrentStep(CHECKOUT_STEPS.ADDRESS);
           } else {
-            // No valid session - start from verification
             setCurrentStep(CHECKOUT_STEPS.VERIFICATION);
           }
         } else {
-          // API error - start from verification
           setCurrentStep(CHECKOUT_STEPS.VERIFICATION);
         }
       } catch (error) {
@@ -132,8 +104,85 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
       }
     };
 
-    checkVerificationStatus();
+    initializeCheckout();
   }, []);
+
+  // ✅ Payment recovery check - moved to parent
+  const checkForPendingPayment = async () => {
+    const pendingOrderId = localStorage.getItem("pendingRazorpayOrderId");
+    const pendingSessionId = localStorage.getItem("checkoutSessionId");
+
+    if (!pendingOrderId || !pendingSessionId) return;
+
+    // Check if pending payment is recent (within 30 minutes)
+    const pendingTimestamp = localStorage.getItem("pendingPaymentTimestamp");
+    if (pendingTimestamp) {
+      const timeSincePending = Date.now() - parseInt(pendingTimestamp);
+      const thirtyMinutes = 30 * 60 * 1000;
+      
+      if (timeSincePending > thirtyMinutes) {
+        clearPendingPayment();
+        return;
+      }
+    }
+
+    console.log("🔍 Found pending payment, checking status...");
+
+    setIsCheckingPendingPayment(true);
+
+    try {
+      const response = await fetch("/api/payments/check-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          razorpay_order_id: pendingOrderId,
+          sessionId: pendingSessionId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.status === "completed") {
+        // ✅ Payment was completed! Show success modal
+        console.log("✅ Payment completed by webhook", {
+          orderNumber: data.order.orderNumber,
+        });
+
+        setRecoveryOrderId(data.order.orderNumber);
+        setShowSuccessModal(true);
+        
+      } else if (data.status === "payment_not_completed") {
+        // Payment was not completed, clear the pending state
+        clearPendingPayment();
+      }
+    } catch (error) {
+      console.error("Error checking pending payment:", error);
+    } finally {
+      setIsCheckingPendingPayment(false);
+    }
+  };
+
+  const clearPendingPayment = () => {
+    localStorage.removeItem("pendingRazorpayOrderId");
+    localStorage.removeItem("checkoutSessionId");
+    localStorage.removeItem("pendingPaymentTimestamp");
+  };
+
+  const handleRecoverySuccess = () => {
+    clearPendingPayment();
+    if (sessionType !== "buy_now") {
+      clearCart();
+    }
+    setShowSuccessModal(false);
+    router.push(`/order-confirmation?orderId=${recoveryOrderId}`);
+  };
+
+  const handleRecoveryDismiss = () => {
+    clearPendingPayment();
+    setShowSuccessModal(false);
+    setRecoveryOrderId(null);
+  };
 
   // Validate cart before proceeding to payment
   const validateCheckout = async () => {
@@ -168,9 +217,53 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
     }
   };
 
-  // Show loading screen during initialization
-  if (isInitializing || !sessionCheckComplete) {
-    return <InitialLoader />;
+  // Show loading screen during initialization or payment recovery check
+  if (isInitializing || !sessionCheckComplete || isCheckingPendingPayment) {
+    return (
+      <div className="bg-gray-50 min-h-screen">
+        <div className="max-w-4xl mx-auto lg:p-6">
+          <div className="lg:bg-white lg:rounded-lg lg:shadow-sm py-4 lg:p-6 lg:mb-6">
+            <div className="flex items-center justify-center space-x-4">
+              {[1, 2, 3].map((step, index) => (
+                <div key={step} className="flex items-center">
+                  <div className="flex flex-col items-center">
+                    <div className="w-6 h-6 bg-gray-200 rounded-full animate-pulse"></div>
+                    <div className="mt-2 h-3 bg-gray-200 rounded w-12 animate-pulse"></div>
+                  </div>
+                  {index < 2 && (
+                    <div className="flex items-center mx-4">
+                      <div className="flex space-x-1">
+                        {[1, 2, 3, 4].map((dot) => (
+                          <div
+                            key={dot}
+                            className="w-1 h-1 bg-gray-200 rounded-full animate-pulse"
+                          ></div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="lg:bg-white lg:rounded-lg lg:shadow-sm">
+            <div className="p-6">
+              <div className="max-w-md mx-auto text-center">
+                <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-full animate-pulse"></div>
+                <div className="h-6 bg-gray-200 rounded mx-auto mb-2 w-48 animate-pulse"></div>
+                <div className="h-4 bg-gray-100 rounded mx-auto w-64 animate-pulse"></div>
+                {isCheckingPendingPayment && (
+                  <div className="mt-4">
+                    <div className="h-4 bg-gray-100 rounded mx-auto w-32 animate-pulse"></div>
+                    <div className="h-3 bg-gray-100 rounded mx-auto w-48 mt-2 animate-pulse"></div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Phone verification functions
@@ -388,12 +481,6 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
   const handleAddressStepComplete = (address) => {
     setSelectedAddress(address);
     setCurrentStep(CHECKOUT_STEPS.PAYMENT);
-  };
-
-  // Handle payment success
-  const handlePaymentSuccess = (result) => {
-    clearCart();
-    window.location.href = `/order-confirmation?orderId=${result.orderId}`;
   };
 
   // Render phone verification step
@@ -639,7 +726,6 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
             sessionId={sessionId}
             verifiedPhone={verifiedPhone}
             onBack={() => handleBackToStep(CHECKOUT_STEPS.ADDRESS)}
-            onPaymentSuccess={handlePaymentSuccess}
           />
         );
       default:
@@ -758,6 +844,17 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
 
   return (
     <div className="bg-gray-50 min-h-screen">
+      {/* Success Modal */}
+      <AnimatePresence>
+        {showSuccessModal && recoveryOrderId && (
+          <PaymentSuccessModal
+            orderNumber={recoveryOrderId}
+            onViewOrder={handleRecoverySuccess}
+            onDismiss={handleRecoveryDismiss}
+          />
+        )}
+      </AnimatePresence>
+
       <div className="max-w-4xl mx-auto lg:p-6 lg:pt-4">
         <div className="lg:bg-white lg:rounded-lg lg:shadow-sm py-4 lg:p-6 lg:mb-6">
           {renderProgressBar()}

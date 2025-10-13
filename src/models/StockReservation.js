@@ -247,6 +247,32 @@ stockReservationSchema.methods.extend = async function (additionalMinutes = 5) {
   return this;
 };
 
+
+/**
+ * Extend all reservations for a session
+ * Called when payment is initiated
+ */
+stockReservationSchema.statics.extendSessionReservations = async function (
+  sessionId,
+  additionalMinutes = 30
+) {
+  const newExpiryTime = new Date(Date.now() + additionalMinutes * 60 * 1000);
+  
+  const result = await this.updateMany(
+    {
+      sessionId: sessionId,
+      status: "active",
+    },
+    {
+      $set: {
+        expiresAt: newExpiryTime,
+      },
+    }
+  );
+  
+  return result;
+};
+
 const StockReservation =
   mongoose.models.StockReservation ||
   mongoose.model("StockReservation", stockReservationSchema);
