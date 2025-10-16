@@ -122,13 +122,16 @@ export async function POST(request) {
       // ========================================
       // 4. OWNERSHIP VALIDATION
       // ========================================
-      const currentIP = request.headers.get("x-forwarded-for")?.split(",")[0] || 
-                        request.headers.get("x-real-ip") || 
-                        "unknown";
-      
-      if (checkoutSession.ipAddress && 
-          checkoutSession.ipAddress !== "unknown" && 
-          checkoutSession.ipAddress !== currentIP) {
+      const currentIP =
+        request.headers.get("x-forwarded-for")?.split(",")[0] ||
+        request.headers.get("x-real-ip") ||
+        "unknown";
+
+      if (
+        checkoutSession.ipAddress &&
+        checkoutSession.ipAddress !== "unknown" &&
+        checkoutSession.ipAddress !== currentIP
+      ) {
         console.warn("⚠️ IP address changed during checkout", {
           sessionId: checkoutSession.sessionId,
           originalIP: checkoutSession.ipAddress,
@@ -138,9 +141,11 @@ export async function POST(request) {
       }
 
       const currentUserAgent = request.headers.get("user-agent") || "unknown";
-      if (checkoutSession.userAgent && 
-          checkoutSession.userAgent !== "unknown" &&
-          checkoutSession.userAgent !== currentUserAgent) {
+      if (
+        checkoutSession.userAgent &&
+        checkoutSession.userAgent !== "unknown" &&
+        checkoutSession.userAgent !== currentUserAgent
+      ) {
         console.warn("⚠️ User agent changed during checkout", {
           sessionId: checkoutSession.sessionId,
           phoneNumber: verification.phoneNumber,
@@ -151,13 +156,14 @@ export async function POST(request) {
       // 5. TIME-BASED SECURITY
       // ========================================
       if (checkoutSession.paymentInitiatedAt) {
-        const timeSinceInitiation = Date.now() - new Date(checkoutSession.paymentInitiatedAt).getTime();
+        const timeSinceInitiation =
+          Date.now() - new Date(checkoutSession.paymentInitiatedAt).getTime();
         const thirtyMinutes = 30 * 60 * 1000;
 
         if (timeSinceInitiation > thirtyMinutes) {
           checkoutSession.status = "expired";
           await checkoutSession.save();
-          
+
           return NextResponse.json(
             { error: "Payment session expired. Please restart checkout." },
             { status: 400 }
@@ -171,18 +177,23 @@ export async function POST(request) {
       let razorpayPayment;
       try {
         razorpayPayment = await razorpay.payments.fetch(razorpay_payment_id);
-        
-        if (razorpayPayment.status !== "captured" && razorpayPayment.status !== "authorized") {
+
+        if (
+          razorpayPayment.status !== "captured" &&
+          razorpayPayment.status !== "authorized"
+        ) {
           console.error("❌ Payment not captured on Razorpay", {
             razorpay_payment_id,
             status: razorpayPayment.status,
           });
-          
+
           checkoutSession.status = "active";
           await checkoutSession.save();
-          
+
           return NextResponse.json(
-            { error: `Payment not completed. Status: ${razorpayPayment.status}` },
+            {
+              error: `Payment not completed. Status: ${razorpayPayment.status}`,
+            },
             { status: 400 }
           );
         }
@@ -192,22 +203,21 @@ export async function POST(request) {
             expected: razorpay_order_id,
             received: razorpayPayment.order_id,
           });
-          
+
           checkoutSession.status = "active";
           await checkoutSession.save();
-          
+
           return NextResponse.json(
             { error: "Payment order mismatch" },
             { status: 400 }
           );
         }
-
       } catch (razorpayError) {
         console.error("❌ Razorpay API verification failed", razorpayError);
-        
+
         checkoutSession.status = "active";
         await checkoutSession.save();
-        
+
         return NextResponse.json(
           { error: "Unable to verify payment with payment gateway" },
           { status: 500 }
@@ -217,24 +227,29 @@ export async function POST(request) {
       // ========================================
       // 7. AMOUNT INTEGRITY VALIDATION (USING LOCKED TOTAL)
       // ========================================
-      
+
       // ✅ USE LOCKED TOTAL - Price frozen at payment initiation
       if (!checkoutSession.lockedTotal || !checkoutSession.lockedTotals) {
         // Fallback: If somehow locked total is missing, reject payment
-        console.error("❌ No locked total found - session integrity compromised", {
-          sessionId: checkoutSession.sessionId,
-          razorpay_payment_id
-        });
-        
+        console.error(
+          "❌ No locked total found - session integrity compromised",
+          {
+            sessionId: checkoutSession.sessionId,
+            razorpay_payment_id,
+          }
+        );
+
         checkoutSession.status = "active";
         await checkoutSession.save();
-        
+
         return NextResponse.json(
-          { error: "Payment session integrity error. Please restart checkout." },
+          {
+            error: "Payment session integrity error. Please restart checkout.",
+          },
           { status: 400 }
         );
       }
-      
+
       const expectedAmount = Math.round(checkoutSession.lockedTotal * 100); // In paise
       const actualAmount = razorpayPayment.amount;
 
@@ -245,7 +260,7 @@ export async function POST(request) {
           actualAmount,
           difference: actualAmount - expectedAmount,
           lockedAt: checkoutSession.lockedTotals.lockedAt,
-          coupon: checkoutSession.appliedCoupon?.code || 'none'
+          coupon: checkoutSession.appliedCoupon?.code || "none",
         });
 
         // CRITICAL: This indicates tampering attempt
@@ -287,15 +302,15 @@ export async function POST(request) {
         },
         orderStatus: "confirmed",
         confirmedAt: new Date(),
-        
+
         // ✅ USE LOCKED TOTALS - Not recalculated
         totals: checkoutSession.lockedTotals,
-        
+
         appliedCoupon: checkoutSession.appliedCoupon,
         sessionId: checkoutSession.sessionId,
         orderSource: checkoutSession.type,
         guestTrackingId: checkoutSession.guestTrackingId,
-        
+
         securityMetadata: {
           verifiedPhone: verification.phoneNumber,
           ipAddress: currentIP,
@@ -309,10 +324,49 @@ export async function POST(request) {
       });
 
       // ========================================
+      // ✅ SHIPMENT CREATION (Automatic)
+      // ========================================
+      const createShipment = async () => {
+        try {
+          const shipmentResponse = await fetch(
+            `${
+              process.env.NODE_ENV === "production"
+                ? "https://yourdomain.com"
+                : "http://localhost:3000"
+            }/api/shipping/create-shipment`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderNumber: order.orderNumber }),
+            }
+          );
+
+          if (shipmentResponse.ok) {
+            const shipmentData = await shipmentResponse.json();
+            console.log("✅ Shipment created successfully", {
+              orderNumber: order.orderNumber,
+              shipmentId: shipmentData.shipment.shipmentId,
+            });
+          } else {
+            console.warn(
+              "⚠️ Shipment creation failed (order created successfully)"
+            );
+          }
+        } catch (shipmentError) {
+          console.warn("⚠️ Shipment creation error (order already created)");
+        }
+      };
+
+      // Create shipment asynchronously (don't wait)
+      createShipment().catch((err) => {
+        console.error("🔴 Shipment creation async error:", err);
+      });
+
+      // ========================================
       // 9. CLEANUP & FINALIZE
       // ========================================
       await checkoutSession.releaseReservations("completed");
-      
+
       checkoutSession.status = "completed";
       checkoutSession.completedAt = new Date();
       checkoutSession.orderId = order._id;
@@ -332,24 +386,23 @@ export async function POST(request) {
           shippingAddress: order.shippingAddress,
         },
       });
-
     } catch (processingError) {
       console.error("❌ Error during payment processing", processingError);
-      
+
       if (checkoutSession && checkoutSession.status === "processing") {
         checkoutSession.status = "active";
         await checkoutSession.save();
       }
-      
+
       throw processingError;
     }
-
   } catch (error) {
     console.error("❌ Payment verification error", error);
     return NextResponse.json(
-      { 
+      {
         error: "Payment verification failed",
-        message: process.env.NODE_ENV === "development" ? error.message : undefined
+        message:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       },
       { status: 500 }
     );

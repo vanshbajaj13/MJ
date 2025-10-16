@@ -342,12 +342,6 @@ function EmptyCheckoutState({ onContinueShopping, countdown, error }) {
           >
             Continue Shopping
           </button>
-          <button
-            onClick={() => window.history.back()}
-            className="w-full text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            Go Back
-          </button>
         </div>
 
         <div className="mt-8 pt-6 border-t border-gray-100">

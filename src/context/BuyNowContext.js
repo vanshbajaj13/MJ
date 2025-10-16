@@ -21,6 +21,13 @@ const checkoutReducer = (state, action) => {
         isActive: true,
       };
 
+    // ✅ NEW: Update session expiry without changing other data
+    case "UPDATE_SESSION_EXPIRY":
+      return {
+        ...state,
+        expiresAt: action.payload.expiresAt,
+      };
+
     case "UPDATE_SESSION_PRICES":
       // Update prices and coupon silently when backend detects changes
       return {
@@ -160,6 +167,14 @@ export function BuyNowProvider({ children }) {
         items: updatedItems,
         appliedCoupon: updatedCoupon,
       },
+    });
+  };
+
+  // ✅ NEW: Update session expiry (called after payment order creation)
+  const updateSessionExpiry = (newExpiresAt) => {
+    dispatch({
+      type: "UPDATE_SESSION_EXPIRY",
+      payload: { expiresAt: newExpiresAt },
     });
   };
 
@@ -435,7 +450,8 @@ export function BuyNowProvider({ children }) {
     applyCoupon,
     removeCoupon,
     clearSession,
-    updateSessionPrices, // NEW: for silent price updates
+    updateSessionPrices,
+    updateSessionExpiry, // ✅ NEW: expose this function
   };
 
   return (

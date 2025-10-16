@@ -19,10 +19,7 @@ export async function POST(request) {
 
     if (!signature) {
       console.error("❌ Webhook signature missing");
-      return NextResponse.json(
-        { error: "Signature missing" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Signature missing" }, { status: 400 });
     }
 
     // Verify webhook is from Razorpay
@@ -33,10 +30,7 @@ export async function POST(request) {
 
     if (expectedSignature !== signature) {
       console.error("❌ Invalid webhook signature");
-      return NextResponse.json(
-        { error: "Invalid signature" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
     const event = JSON.parse(body);
@@ -46,12 +40,12 @@ export async function POST(request) {
     // ========================================
     if (event.event === "payment.captured") {
       const payment = event.payload.payment.entity;
-      
+
       await handlePaymentCaptured(payment);
-      
-      return NextResponse.json({ 
+
+      return NextResponse.json({
         success: true,
-        message: "Webhook processed successfully" 
+        message: "Webhook processed successfully",
       });
     }
 
@@ -60,30 +54,29 @@ export async function POST(request) {
     // ========================================
     if (event.event === "payment.failed") {
       const payment = event.payload.payment.entity;
-      
+
       await handlePaymentFailed(payment);
-      
-      return NextResponse.json({ 
+
+      return NextResponse.json({
         success: true,
-        message: "Payment failure recorded" 
+        message: "Payment failure recorded",
       });
     }
 
     // Other events - just acknowledge
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: "Event received" 
+      message: "Event received",
     });
-
   } catch (error) {
     console.error("❌ Webhook processing error", error);
-    
+
     // IMPORTANT: Return 200 even on error to prevent Razorpay from retrying
     // Log error to monitoring system instead
     return NextResponse.json(
-      { 
+      {
         success: false,
-        error: "Internal error - logged for review" 
+        error: "Internal error - logged for review",
       },
       { status: 200 }
     );
@@ -105,7 +98,6 @@ async function handlePaymentCaptured(payment) {
     email,
     contact,
   } = payment;
-
 
   // ========================================
   // CHECK IF ORDER ALREADY EXISTS
@@ -214,9 +206,9 @@ async function handlePaymentCaptured(payment) {
   try {
     // Lock the session first
     const locked = await CheckoutSession.findOneAndUpdate(
-      { 
+      {
         _id: checkoutSession._id,
-        status: { $in: ["active", "processing"] }
+        status: { $in: ["active", "processing"] },
       },
       { $set: { status: "processing" } },
       { new: true }
@@ -254,7 +246,7 @@ async function handlePaymentCaptured(payment) {
       sessionId: checkoutSession.sessionId,
       orderSource: checkoutSession.type,
       guestTrackingId: checkoutSession.guestTrackingId,
-      
+
       securityMetadata: {
         createdVia: "webhook", // Important: Mark as webhook-created
         verifiedPhone: checkoutSession.verifiedPhone,
@@ -273,9 +265,47 @@ async function handlePaymentCaptured(payment) {
     checkoutSession.orderId = order._id;
     await checkoutSession.save();
 
+    // ========================================
+    // ✅ SHIPMENT CREATION (Automatic from Webhook)
+    // ========================================
+    const createShipmentFromWebhook = async () => {
+      try {
+        const shipmentResponse = await fetch(
+          `${
+            process.env.NODE_ENV === "production"
+              ? process.env.NEXT_PUBLIC_API_BASE_URL || "https://yourdomain.com"
+              : "http://localhost:3000"
+          }/api/shipping/create-shipment`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orderNumber: order.orderNumber }),
+          }
+        );
+
+        if (shipmentResponse.ok) {
+          const shipmentData = await shipmentResponse.json();
+          console.log("✅ [WEBHOOK] Shipment created successfully", {
+            orderNumber: order.orderNumber,
+            shipmentId: shipmentData.shipment.shipmentId,
+          });
+        } else {
+          console.warn(
+            "⚠️ [WEBHOOK] Shipment creation failed (but order created)"
+          );
+        }
+      } catch (shipmentError) {
+        console.warn("⚠️ [WEBHOOK] Shipment creation error");
+      }
+    };
+
+    // Create shipment asynchronously
+    createShipmentFromWebhook().catch((err) => {
+      console.error("🔴 [WEBHOOK] Shipment creation async error:", err);
+    });
+
     // TODO: Send confirmation email to customer
     await sendOrderConfirmationEmail(order);
-
   } catch (orderError) {
     console.error("❌ Failed to create order in webhook", orderError);
 
@@ -333,7 +363,7 @@ async function logOrphanedPayment(data) {
 
 async function logIncompleteOrder(data) {
   console.warn("⚠️ INCOMPLETE ORDER - Follow-up needed", data);
-  
+
   // TODO: Store for admin follow-up
   // TODO: Send SMS to customer asking for address
 }

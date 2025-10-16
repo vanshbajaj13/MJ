@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import AddressStep from "./AddressStep";
 import PaymentStep from "./PaymentStep";
 import PaymentSuccessModal from "./PaymentSuccessModal";
+import ProcessingPayment from "./ProcessingPayment";
 
 const CHECKOUT_STEPS = {
   VERIFICATION: 1,
@@ -17,9 +18,7 @@ const CHECKOUT_STEPS = {
 
 export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
   const { appliedCoupon, discountAmount, clearCart } = useCart();
-  const {
-    type: sessionType,
-  } = useCheckout();
+  const { type: sessionType } = useCheckout();
   const router = useRouter();
 
   // Session and initialization state
@@ -48,7 +47,8 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
   const [selectedAddress, setSelectedAddress] = useState(null);
 
   // Payment recovery state
-  const [isCheckingPendingPayment, setIsCheckingPendingPayment] = useState(false);
+  const [isCheckingPendingPayment, setIsCheckingPendingPayment] =
+    useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [recoveryOrderId, setRecoveryOrderId] = useState(null);
 
@@ -119,14 +119,12 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
     if (pendingTimestamp) {
       const timeSincePending = Date.now() - parseInt(pendingTimestamp);
       const thirtyMinutes = 30 * 60 * 1000;
-      
+
       if (timeSincePending > thirtyMinutes) {
         clearPendingPayment();
         return;
       }
     }
-
-    console.log("🔍 Found pending payment, checking status...");
 
     setIsCheckingPendingPayment(true);
 
@@ -144,14 +142,12 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
       const data = await response.json();
 
       if (data.success && data.status === "completed") {
-        // ✅ Payment was completed! Show success modal
-        console.log("✅ Payment completed by webhook", {
-          orderNumber: data.order.orderNumber,
-        });
-
         setRecoveryOrderId(data.order.orderNumber);
         setShowSuccessModal(true);
-        
+        clearPendingPayment();
+        if (sessionType !== "buy_now") {
+          clearCart();
+        }
       } else if (data.status === "payment_not_completed") {
         // Payment was not completed, clear the pending state
         clearPendingPayment();
@@ -220,49 +216,52 @@ export default function UnifiedCheckoutForm({ sessionId, mobile = false }) {
   // Show loading screen during initialization or payment recovery check
   if (isInitializing || !sessionCheckComplete || isCheckingPendingPayment) {
     return (
-      <div className="bg-gray-50 min-h-screen">
-        <div className="max-w-4xl mx-auto lg:p-6">
-          <div className="lg:bg-white lg:rounded-lg lg:shadow-sm py-4 lg:p-6 lg:mb-6">
-            <div className="flex items-center justify-center space-x-4">
-              {[1, 2, 3].map((step, index) => (
-                <div key={step} className="flex items-center">
-                  <div className="flex flex-col items-center">
-                    <div className="w-6 h-6 bg-gray-200 rounded-full animate-pulse"></div>
-                    <div className="mt-2 h-3 bg-gray-200 rounded w-12 animate-pulse"></div>
-                  </div>
-                  {index < 2 && (
-                    <div className="flex items-center mx-4">
-                      <div className="flex space-x-1">
-                        {[1, 2, 3, 4].map((dot) => (
-                          <div
-                            key={dot}
-                            className="w-1 h-1 bg-gray-200 rounded-full animate-pulse"
-                          ></div>
-                        ))}
+      <>
+      {isCheckingPendingPayment && <ProcessingPayment />}
+        <div className="bg-gray-50 min-h-screen">
+          <div className="max-w-4xl mx-auto lg:p-6">
+            <div className="lg:bg-white lg:rounded-lg lg:shadow-sm py-4 lg:p-6 lg:mb-6">
+              <div className="flex items-center justify-center space-x-4">
+                {[1, 2, 3].map((step, index) => (
+                  <div key={step} className="flex items-center">
+                    <div className="flex flex-col items-center">
+                      <div className="w-6 h-6 bg-gray-200 rounded-full animate-pulse"></div>
+                      <div className="mt-2 h-3 bg-gray-200 rounded w-12 animate-pulse"></div>
+                    </div>
+                    {index < 2 && (
+                      <div className="flex items-center mx-4">
+                        <div className="flex space-x-1">
+                          {[1, 2, 3, 4].map((dot) => (
+                            <div
+                              key={dot}
+                              className="w-1 h-1 bg-gray-200 rounded-full animate-pulse"
+                            ></div>
+                          ))}
+                        </div>
                       </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="lg:bg-white lg:rounded-lg lg:shadow-sm">
+              <div className="p-6">
+                <div className="max-w-md mx-auto text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-full animate-pulse"></div>
+                  <div className="h-6 bg-gray-200 rounded mx-auto mb-2 w-48 animate-pulse"></div>
+                  <div className="h-4 bg-gray-100 rounded mx-auto w-64 animate-pulse"></div>
+                  {isCheckingPendingPayment && (
+                    <div className="mt-4">
+                      <div className="h-4 bg-gray-100 rounded mx-auto w-32 animate-pulse"></div>
+                      <div className="h-3 bg-gray-100 rounded mx-auto w-48 mt-2 animate-pulse"></div>
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
-          <div className="lg:bg-white lg:rounded-lg lg:shadow-sm">
-            <div className="p-6">
-              <div className="max-w-md mx-auto text-center">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-full animate-pulse"></div>
-                <div className="h-6 bg-gray-200 rounded mx-auto mb-2 w-48 animate-pulse"></div>
-                <div className="h-4 bg-gray-100 rounded mx-auto w-64 animate-pulse"></div>
-                {isCheckingPendingPayment && (
-                  <div className="mt-4">
-                    <div className="h-4 bg-gray-100 rounded mx-auto w-32 animate-pulse"></div>
-                    <div className="h-3 bg-gray-100 rounded mx-auto w-48 mt-2 animate-pulse"></div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 

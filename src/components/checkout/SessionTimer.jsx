@@ -8,49 +8,33 @@ export default function SessionTimer() {
   const [timeLeft, setTimeLeft] = useState(0);
   const [showWarning, setShowWarning] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
+  // Inside your component
+  const [totalTime, setTotalTime] = useState(0);
 
   useEffect(() => {
     if (!isActive || !expiresAt) return;
 
-    // Calculate initial time left
+    const now = new Date().getTime();
+    const expiration = new Date(expiresAt).getTime();
+    const total = Math.max(0, Math.floor((expiration - now) / 1000));
+    setTotalTime(total);
+
     const calculateTimeLeft = () => {
       const now = new Date().getTime();
-      const expiration = new Date(expiresAt).getTime();
       const remaining = Math.max(0, Math.floor((expiration - now) / 1000));
-      
+
       if (remaining <= 0) {
         setIsExpired(true);
-        setTimeout(() => {
-          clearSession();
-        }, 1000);
+        setTimeout(() => clearSession(), 1000);
         return 0;
       }
-      
       return remaining;
     };
 
-    // Set initial time
     setTimeLeft(calculateTimeLeft());
 
     const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        const newTimeLeft = calculateTimeLeft();
-        
-        // Show warning when exactly 1 minute (60 seconds) left
-        if (newTimeLeft === 60 && prev > 60) {
-          setShowWarning(true);
-          setTimeout(() => setShowWarning(false), 5000); // Hide after 5 seconds
-        }
-        
-        // If time runs out, stop the timer
-        if (newTimeLeft <= 0) {
-          clearInterval(timer);
-          setIsExpired(true);
-          return 0;
-        }
-        
-        return newTimeLeft;
-      });
+      setTimeLeft(calculateTimeLeft());
     }, 1000);
 
     return () => clearInterval(timer);
@@ -59,19 +43,13 @@ export default function SessionTimer() {
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
   const getTimerColor = () => {
     if (isExpired) return "text-red-600";
     if (timeLeft <= 60) return "text-red-500 animate-pulse";
     return "text-gray-600";
-  };
-
-  const getTimerBg = () => {
-    if (isExpired) return "bg-red-50 border-red-200";
-    if (timeLeft <= 60) return "bg-red-50 border-red-100";
-    return "bg-gray-50 border-gray-200";
   };
 
   if (!isActive || !expiresAt) return null;
@@ -84,26 +62,27 @@ export default function SessionTimer() {
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className={`
-            ${getTimerBg()}
-            border rounded-lg px-3 py-2 flex items-center gap-2
+            bg-white px-3 py-2 flex items-center gap-2
             transition-all duration-300
           `}
         >
           <div className="flex items-center gap-1">
-            <svg 
+            <svg
               className={`w-4 h-4 ${getTimerColor()} transition-colors duration-300`}
-              fill="none" 
-              stroke="currentColor" 
+              fill="none"
+              stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={2} 
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" 
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span className={`text-sm font-medium ${getTimerColor()} transition-colors duration-300`}>
+            <span
+              className={`text-sm font-medium ${getTimerColor()} transition-colors duration-300`}
+            >
               {isExpired ? "Session Expired" : `${formatTime(timeLeft)} left`}
             </span>
           </div>
@@ -133,8 +112,8 @@ export default function SessionTimer() {
                   strokeLinecap="round"
                   className={timeLeft <= 60 ? "text-red-500" : "text-blue-500"}
                   initial={{ strokeDashoffset: 62.8 }}
-                  animate={{ 
-                    strokeDashoffset: 62.8 * (timeLeft / 300) // 300 seconds = 5 minutes
+                  animate={{
+                    strokeDashoffset: 62.8 * (timeLeft / totalTime),
                   }}
                   transition={{ duration: 1 }}
                   strokeDasharray="62.8"
@@ -158,14 +137,25 @@ export default function SessionTimer() {
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-lg backdrop-blur-sm max-w-xs mx-4">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-1.959-1.333-2.73 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <svg
+                    className="w-4 h-4 text-amber-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-1.959-1.333-2.73 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
                   </svg>
                 </div>
-                
+
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-amber-900 leading-relaxed">
-                    Only 1 minute left! Complete your purchase before the session expires.
+                    Only 1 minute left! Complete your purchase before the
+                    session expires.
                   </p>
                 </div>
 
@@ -173,8 +163,18 @@ export default function SessionTimer() {
                   onClick={() => setShowWarning(false)}
                   className="text-amber-900 hover:opacity-70 transition-opacity flex-shrink-0"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>

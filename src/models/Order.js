@@ -122,6 +122,7 @@ const orderSchema = new mongoose.Schema(
       trackingUrl: String,
       estimatedDelivery: Date,
       actualDelivery: Date,
+      creationInProgress: { type: Boolean, default: false },
     },
 
     // Pricing

@@ -1,4 +1,4 @@
-// api/payments/create-razorpay-order/route.js - WITH SESSION & RESERVATION EXTENSION
+// api/payments/create-razorpay-order/route.js
 import Razorpay from "razorpay";
 import dbConnect from "@/lib/dbConnect";
 import { verifyCheckoutSession } from "@/lib/middleware/checkoutAuth";
@@ -95,12 +95,14 @@ export async function POST(request) {
     
     const timeRemaining = session.getTimeRemaining();
     const fiveMinutes = 5 * 60 * 1000;
+    let wasExtended = false;
     
     // If less than 5 minutes remaining, extend the session
     if (timeRemaining < fiveMinutes) {
 
       try {
         await session.extendForPayment(); // Extends by 30 minutes
+        wasExtended = true;
       } catch (extensionError) {
         console.error("❌ Failed to extend session", extensionError);
         // Continue anyway - user might still complete payment quickly
@@ -128,7 +130,7 @@ export async function POST(request) {
         itemCount: session.items.length,
         lockedTotal: lockedTotals.finalTotal,
         couponApplied: session.appliedCoupon?.code || 'none',
-        sessionExtended: timeRemaining < fiveMinutes ? 'yes' : 'no'
+        sessionExtended: wasExtended ? 'yes' : 'no'
       },
     });
 
@@ -167,9 +169,9 @@ export async function POST(request) {
       },
       priceProtection: {
         locked: true,
-        expiresAt: session.expiresAt, // Now extended by 30 minutes
+        expiresAt: session.expiresAt,
         message: "Your price is protected for 30 minutes",
-        sessionExtended: timeRemaining < fiveMinutes
+        sessionExtended: wasExtended
       }
     });
 

@@ -14,6 +14,7 @@ import PriceChangeNotification from "./PriceChangeNotification";
 import PaymentRecoveryModal from "./PaymentRecoveryModal";
 import PaymentSuccessModal from "./PaymentSuccessModal";
 import AnimatedPrice from "./AnimatedPrice";
+import ProcessingPayment from "./ProcessingPayment";
 
 const loadRazorpayScript = () => {
   return new Promise((resolve) => {
@@ -62,6 +63,7 @@ const PaymentStep = ({ selectedAddress, onBack, verifiedPhone }) => {
     totalDiscount,
     shippingDiscount,
     updateSessionPrices,
+    updateSessionExpiry,
     type: sessionType,
   } = useCheckout();
 
@@ -181,6 +183,11 @@ const PaymentStep = ({ selectedAddress, onBack, verifiedPhone }) => {
 
       pendingRazorpayOrderIdRef.current = orderData.orderId;
 
+      // ✅ NEW: Update context with extended expiresAt
+      if (orderData.priceProtection?.expiresAt) {
+        updateSessionExpiry(orderData.priceProtection.expiresAt);
+      }
+
       // Store in localStorage for browser close recovery
       localStorage.setItem("pendingRazorpayOrderId", orderData.orderId);
       localStorage.setItem("checkoutSessionId", sessionId);
@@ -280,7 +287,6 @@ const PaymentStep = ({ selectedAddress, onBack, verifiedPhone }) => {
   };
 
   const handleSuccessContinueShopping = () => {
-    setShowSuccessModal(false);
     router.push("/");
   };
 
@@ -341,7 +347,7 @@ const PaymentStep = ({ selectedAddress, onBack, verifiedPhone }) => {
           />
         )}
       </ToastContainer>
-
+      <AnimatePresence>{isProcessing && <ProcessingPayment />}</AnimatePresence>
       <AnimatePresence>
         {/* Recovery Modal */}
         {showRecoveryModal && pendingRazorpayOrderIdRef.current && (

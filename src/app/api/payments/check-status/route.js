@@ -12,7 +12,7 @@ const razorpay = new Razorpay({
 /**
  * Check payment status and create order if payment succeeded
  * but verification failed
- * 
+ *
  * User sees: "Payment verification failed. Checking status..."
  */
 export async function POST(request) {
@@ -36,7 +36,6 @@ export async function POST(request) {
     });
 
     if (existingOrder) {
-
       return NextResponse.json({
         success: true,
         status: "completed",
@@ -78,17 +77,17 @@ export async function POST(request) {
     let payments;
     try {
       const orderDetails = await razorpay.orders.fetch(razorpay_order_id);
-      
+
       // Get all payments for this order
       payments = await razorpay.orders.fetchPayments(razorpay_order_id);
-
     } catch (razorpayError) {
       console.error("❌ Failed to fetch from Razorpay", razorpayError);
 
       return NextResponse.json({
         success: false,
         status: "razorpay_error",
-        message: "Unable to verify payment. Please try again or contact support.",
+        message:
+          "Unable to verify payment. Please try again or contact support.",
         supportInfo: {
           razorpay_order_id,
           sessionId: checkoutSession.sessionId,
@@ -104,7 +103,6 @@ export async function POST(request) {
     );
 
     if (!capturedPayment) {
-
       return NextResponse.json({
         success: false,
         status: "payment_not_completed",
@@ -185,7 +183,10 @@ export async function POST(request) {
         shippingAddress = {
           fullName: capturedPayment.notes?.customerName || "Customer",
           email: capturedPayment.email || "noemail@provided.com",
-          phoneNumber: capturedPayment.contact || checkoutSession.verifiedPhone || "Not provided",
+          phoneNumber:
+            capturedPayment.contact ||
+            checkoutSession.verifiedPhone ||
+            "Not provided",
           addressLine1: "Address pending",
           city: "City pending",
           state: "State pending",
@@ -221,7 +222,7 @@ export async function POST(request) {
         sessionId: checkoutSession.sessionId,
         orderSource: checkoutSession.type,
         guestTrackingId: checkoutSession.guestTrackingId,
-        
+
         securityMetadata: {
           createdVia: "status_check", // Important: Mark as recovered
           verifiedPhone: checkoutSession.verifiedPhone,
@@ -232,6 +233,38 @@ export async function POST(request) {
 
       // Release reservations
       await checkoutSession.releaseReservations("completed");
+
+      // ========================================
+      // ✅ SHIPMENT CREATION (Automatic for Recovered Orders)
+      // ========================================
+      const createShipmentForRecovery = async () => {
+        try {
+          const shipmentResponse = await fetch(
+            `${
+              process.env.NODE_ENV === "production"
+                ? process.env.NEXT_PUBLIC_API_BASE_URL ||
+                  "https://yourdomain.com"
+                : "http://localhost:3000"
+            }/api/shipping/create-shipment`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderNumber: order.orderNumber }),
+            }
+          );
+
+          if (shipmentResponse.ok) {
+            console.log("✅ Shipment created for recovered order");
+          }
+        } catch (shipmentError) {
+          console.warn("⚠️ Shipment creation error during recovery");
+        }
+      };
+
+      // Create shipment asynchronously
+      createShipmentForRecovery().catch((err) => {
+        console.error("🔴 Shipment creation error during recovery:", err);
+      });
 
       // Update session
       checkoutSession.status = "completed";
@@ -251,14 +284,14 @@ export async function POST(request) {
           items: order.items,
         },
       });
-
     } catch (orderError) {
       console.error("❌ Failed to create order during recovery", orderError);
 
       return NextResponse.json({
         success: false,
         status: "recovery_failed",
-        message: "Payment confirmed but order creation failed. Our team will resolve this shortly.",
+        message:
+          "Payment confirmed but order creation failed. Our team will resolve this shortly.",
         supportInfo: {
           razorpay_order_id,
           razorpay_payment_id: capturedPayment.id,
@@ -267,15 +300,16 @@ export async function POST(request) {
         },
       });
     }
-
   } catch (error) {
     console.error("❌ Status check error", error);
 
-    return NextResponse.json({
-      success: false,
-      status: "error",
-      message: "Unable to check payment status. Please contact support.",
-    },
-    { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        status: "error",
+        message: "Unable to check payment status. Please contact support.",
+      },
+      { status: 500 }
+    );
   }
 }

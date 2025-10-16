@@ -70,7 +70,7 @@ const PaymentRecoveryModal = ({ razorpayOrderId, onSuccess, onCancel }) => {
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                className="w-16 h-16 border-4 border-gray-200 border-t-blue-600 rounded-full mb-6"
+                className="w-16 h-16 border-4 border-gray-200 border-t-black rounded-full mb-6"
               />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
                 Verifying Payment
